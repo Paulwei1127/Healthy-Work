@@ -2,7 +2,7 @@
 
 Windows desktop MVP for healthier work habits.
 
-This repository has the project skeleton, data layer, pure statistics/scoring logic, and pure timer state machine. UI logic will be added in later approved steps.
+This repository has the project skeleton, data layer, pure statistics/scoring logic, pure timer state machine, and the first Tkinter main window. Reminder dialog, report dialog, and persistence integration will be added in later approved steps.
 
 ## Planned MVP
 
@@ -22,6 +22,16 @@ This repository has the project skeleton, data layer, pure statistics/scoring lo
 - Tkinter
 - JSON file storage
 - Standard library only for the initial MVP
+
+## Run The Current UI
+
+From the repository root:
+
+```powershell
+python -m app.main
+```
+
+The current UI is connected to `WorkTimer` only. The statistics area intentionally shows temporary timer state and placeholders until the storage/report flow is approved.
 
 ## Data Storage
 
