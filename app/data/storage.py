@@ -33,6 +33,12 @@ class JsonStorage:
 
     def __init__(self, file_path: str | Path = DEFAULT_STORAGE_PATH) -> None:
         self.file_path = Path(file_path)
+        self.last_recovery_message: str | None = None
+
+    def consume_recovery_message(self) -> str | None:
+        message = self.last_recovery_message
+        self.last_recovery_message = None
+        return message
 
     def initialize(self) -> dict[str, Any]:
         return self.load_data()
@@ -147,6 +153,10 @@ class JsonStorage:
                 raise StorageError(
                     f"Unable to back up invalid storage file: {self.file_path}"
                 ) from exc
+            self.last_recovery_message = (
+                "資料檔格式錯誤，已備份壞掉的檔案並重新初始化。"
+                f"\n備份檔：{backup_path.name}"
+            )
 
         data = create_empty_data()
         self.save_data(data)

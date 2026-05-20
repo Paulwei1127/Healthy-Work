@@ -51,12 +51,18 @@ class MainWindow:
         storage: JsonStorage | None = None,
     ) -> None:
         self.root = root or tk.Tk()
-        self.timer = timer or WorkTimer()
         self.storage = storage or JsonStorage()
+        self.today = date.today().isoformat()
+        self._startup_storage_message: str | None = None
+        self._session_break_records, initial_work_minutes = self._load_today_data()
+
+        self.timer = timer or WorkTimer(initial_work_seconds=initial_work_minutes * 60)
+        if timer is not None:
+            self.timer.reset_day(initial_work_seconds=initial_work_minutes * 60)
+
         self._after_id: str | None = None
         self._pending_break: CompletedBreak | None = None
         self._break_dialog: tk.Toplevel | None = None
-        self._session_break_records: list[BreakRecord] = []
 
         self.interval_var = tk.StringVar(
             value=str(self.timer.break_interval_minutes)
@@ -75,9 +81,38 @@ class MainWindow:
         self._build_widgets()
         self._render(self.timer.snapshot())
         self._schedule_tick()
+        self.root.after_idle(self._show_startup_storage_message)
 
     def run(self) -> None:
         self.root.mainloop()
+
+    def _load_today_data(self) -> tuple[list[BreakRecord], int]:
+        try:
+            records = self.storage.list_break_records(self.today)
+            work_minutes = self.storage.get_work_minutes(self.today)
+        except (StorageError, ValueError) as exc:
+            self._startup_storage_message = (
+                "讀取今日資料時發生問題，已先用 0 初始化畫面。"
+                f"\n原因：{exc}"
+            )
+            return [], 0
+
+        recovery_message = self.storage.consume_recovery_message()
+        if recovery_message:
+            self._startup_storage_message = recovery_message
+
+        return records, work_minutes
+
+    def _show_startup_storage_message(self) -> None:
+        if not self._startup_storage_message:
+            return
+
+        messagebox.showwarning(
+            "資料讀取提醒",
+            self._startup_storage_message,
+            parent=self.root,
+        )
+        self._startup_storage_message = None
 
     def _configure_window(self) -> None:
         self.root.title("健康工作小工具")
@@ -195,7 +230,7 @@ class MainWindow:
                 pady=4,
             )
 
-        stats_frame = ttk.LabelFrame(container, text="今日統計（本次執行）", padding=10)
+        stats_frame = ttk.LabelFrame(container, text="今日統計", padding=10)
         stats_frame.pack(fill=tk.X, pady=(14, 0))
 
         self._add_stat_row(stats_frame, "工作總時間", self.work_total_var, 0)
@@ -284,17 +319,14 @@ class MainWindow:
             self._break_dialog.lift()
             return
 
-        today = date.today().isoformat()
-
         try:
-            records = self.storage.list_break_records(today)
             statistics = calculate_daily_statistics(
-                date=today,
-                work_minutes=snapshot.total_work_seconds // 60,
-                break_records=records,
+                date=self.today,
+                work_minutes=self.timer.snapshot().total_work_seconds // 60,
+                break_records=self._session_break_records,
             )
             summary = create_daily_summary(statistics)
-            self.storage.set_work_minutes(today, summary.work_minutes)
+            self.storage.set_work_minutes(self.today, summary.work_minutes)
             self.storage.save_daily_summary(summary)
             self.timer.end_day()
         except (StorageError, TimerStateError, ValueError) as exc:
@@ -486,7 +518,7 @@ class MainWindow:
 
     def _render_statistics(self, snapshot: TimerSnapshot) -> None:
         stats = calculate_daily_statistics(
-            date=date.today().isoformat(),
+            date=self.today,
             work_minutes=snapshot.total_work_seconds // 60,
             break_records=self._session_break_records,
         )

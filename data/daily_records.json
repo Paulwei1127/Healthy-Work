@@ -2,51 +2,22 @@
   "settings": {
     "break_interval_minutes": 30
   },
-  "break_records": [
-    {
-      "id": "a21ef163-2265-4082-a7a2-0c7a86a1ae08",
-      "date": "2026-05-20",
-      "start_time": "2026-05-20T16:07:03",
-      "end_time": "2026-05-20T16:07:05",
-      "duration_minutes": 1,
-      "water_ml": 50,
-      "note": ""
-    },
-    {
-      "id": "f11b46c3-1a94-49f7-9a96-3af147266db4",
-      "date": "2026-05-20",
-      "start_time": "2026-05-20T16:13:27",
-      "end_time": "2026-05-20T16:13:29",
-      "duration_minutes": 1,
-      "water_ml": 110,
-      "note": ""
-    },
-    {
-      "id": "991b25e4-84a2-4c96-b8d5-52b8a2c7a147",
-      "date": "2026-05-20",
-      "start_time": "2026-05-20T16:25:51",
-      "end_time": "2026-05-20T16:25:53",
-      "duration_minutes": 1,
-      "water_ml": 10,
-      "note": ""
-    }
-  ],
+  "break_records": [],
   "daily_summaries": [
     {
       "date": "2026-05-20",
       "work_minutes": 0,
-      "break_minutes": 3,
-      "break_count": 3,
-      "water_ml": 170,
-      "average_work_session_minutes": 0.0,
-      "health_score": 60,
+      "break_minutes": 0,
+      "break_count": 0,
+      "water_ml": 0,
+      "average_work_session_minutes": null,
+      "health_score": 10,
       "suggestions": [
-        "今天休息頻率良好。",
+        "今天還沒有休息紀錄，建議安排短休息。",
         "今天喝水量偏低，建議增加喝水量。",
-        "今天平均工作時段控制得不錯。",
         "今天休息時間偏少，建議增加短暫走動與眼睛休息。"
       ],
-      "created_at": "2026-05-20T16:28:57"
+      "created_at": "2026-05-20T16:37:12"
     }
   ],
   "daily_work_minutes": {

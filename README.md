@@ -32,6 +32,7 @@ python -m app.main
 ```
 
 The current UI is connected to `WorkTimer`, can save completed break records to `data/daily_records.json`, and can generate/save an end-of-day `DailySummary`.
+On startup, the UI loads today's saved break records and work minutes once, initializes the timer as `Idle`, and displays today's totals immediately.
 
 ## Data Storage
 
