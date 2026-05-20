@@ -2,7 +2,7 @@
 
 Windows desktop MVP for healthier work habits.
 
-This repository has the project skeleton, data layer, pure statistics/scoring logic, pure timer state machine, and the first Tkinter main window. Reminder dialog, report dialog, and persistence integration will be added in later approved steps.
+This repository has the project skeleton, data layer, pure statistics/scoring logic, pure timer state machine, the first Tkinter main window, and break-record persistence. Reminder dialog and report dialog will be added in later approved steps.
 
 ## Planned MVP
 
@@ -31,7 +31,7 @@ From the repository root:
 python -m app.main
 ```
 
-The current UI is connected to `WorkTimer` only. The statistics area intentionally shows temporary timer state and placeholders until the storage/report flow is approved.
+The current UI is connected to `WorkTimer` and can save completed break records to `data/daily_records.json`. End-of-day reports are not implemented yet.
 
 ## Data Storage
 
