@@ -2,7 +2,7 @@
 
 Windows desktop MVP for healthier work habits.
 
-This repository is currently in the project skeleton stage only. Functional logic will be added in later approved steps.
+This repository has the project skeleton and the first data layer pieces. UI and timer logic will be added in later approved steps.
 
 ## Planned MVP
 
@@ -22,6 +22,17 @@ This repository is currently in the project skeleton stage only. Functional logi
 - Tkinter
 - JSON file storage
 - Standard library only for the initial MVP
+
+## Data Storage
+
+The MVP stores local records in `data/daily_records.json`.
+
+Current storage responsibilities:
+
+- Create the JSON file automatically when it does not exist
+- Back up invalid JSON files with an `.invalid-YYYYMMDD-HHMMSS.json` suffix
+- Store app settings, break records, daily summaries, and per-day work minutes
+- Validate basic data shapes before saving
 
 ## Project Structure
 
