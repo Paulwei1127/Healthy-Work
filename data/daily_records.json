@@ -20,8 +20,36 @@
       "duration_minutes": 1,
       "water_ml": 110,
       "note": ""
+    },
+    {
+      "id": "991b25e4-84a2-4c96-b8d5-52b8a2c7a147",
+      "date": "2026-05-20",
+      "start_time": "2026-05-20T16:25:51",
+      "end_time": "2026-05-20T16:25:53",
+      "duration_minutes": 1,
+      "water_ml": 10,
+      "note": ""
     }
   ],
-  "daily_summaries": [],
-  "daily_work_minutes": {}
+  "daily_summaries": [
+    {
+      "date": "2026-05-20",
+      "work_minutes": 0,
+      "break_minutes": 3,
+      "break_count": 3,
+      "water_ml": 170,
+      "average_work_session_minutes": 0.0,
+      "health_score": 60,
+      "suggestions": [
+        "今天休息頻率良好。",
+        "今天喝水量偏低，建議增加喝水量。",
+        "今天平均工作時段控制得不錯。",
+        "今天休息時間偏少，建議增加短暫走動與眼睛休息。"
+      ],
+      "created_at": "2026-05-20T16:28:57"
+    }
+  ],
+  "daily_work_minutes": {
+    "2026-05-20": 0
+  }
 }

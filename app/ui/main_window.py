@@ -7,6 +7,7 @@ from datetime import date
 from tkinter import messagebox, ttk
 from typing import Callable
 
+from app.core.scoring import create_daily_summary
 from app.core.statistics import calculate_daily_statistics
 from app.core.timer import (
     CompletedBreak,
@@ -17,10 +18,11 @@ from app.core.timer import (
 )
 from app.data.models import BreakRecord
 from app.data.storage import JsonStorage, StorageError
+from app.ui.report_dialog import ReportDialog
 
 
 WINDOW_WIDTH = 360
-WINDOW_HEIGHT = 540
+WINDOW_HEIGHT = 580
 WINDOW_MARGIN_X = 18
 WINDOW_MARGIN_Y = 64
 TICK_INTERVAL_MS = 1000
@@ -168,6 +170,11 @@ class MainWindow:
             text="回到工作",
             command=self._on_return_to_work,
         )
+        self.end_day_button = ttk.Button(
+            controls,
+            text="結束今天",
+            command=self._on_end_day,
+        )
 
         buttons = [
             self.start_button,
@@ -177,6 +184,7 @@ class MainWindow:
             self.snooze_button,
             self.start_break_button,
             self.return_work_button,
+            self.end_day_button,
         ]
         for index, button in enumerate(buttons):
             button.grid(
@@ -252,6 +260,49 @@ class MainWindow:
         except (TimerStateError, ValueError) as exc:
             messagebox.showwarning("無法執行", str(exc), parent=self.root)
         self._render(self.timer.snapshot())
+
+    def _on_end_day(self) -> None:
+        snapshot = self.timer.snapshot()
+        if snapshot.state == TimerState.BREAKING:
+            messagebox.showinfo(
+                "尚在休息中",
+                "請先按「回到工作」並儲存休息紀錄，再結束今天。",
+                parent=self.root,
+            )
+            return
+
+        if self._pending_break is not None:
+            messagebox.showinfo(
+                "休息紀錄尚未儲存",
+                "請先儲存目前的休息紀錄，再結束今天。",
+                parent=self.root,
+            )
+            self._show_break_record_dialog()
+            return
+
+        if self._break_dialog is not None and self._break_dialog.winfo_exists():
+            self._break_dialog.lift()
+            return
+
+        today = date.today().isoformat()
+
+        try:
+            records = self.storage.list_break_records(today)
+            statistics = calculate_daily_statistics(
+                date=today,
+                work_minutes=snapshot.total_work_seconds // 60,
+                break_records=records,
+            )
+            summary = create_daily_summary(statistics)
+            self.storage.set_work_minutes(today, summary.work_minutes)
+            self.storage.save_daily_summary(summary)
+            self.timer.end_day()
+        except (StorageError, TimerStateError, ValueError) as exc:
+            messagebox.showerror("結束今天失敗", str(exc), parent=self.root)
+            return
+
+        self._render(self.timer.snapshot())
+        ReportDialog(self.root, summary).show()
 
     def _show_break_record_dialog(self) -> None:
         if self._pending_break is None:
@@ -471,6 +522,9 @@ class MainWindow:
         )
         self.return_work_button.state(
             ["!disabled"] if state == TimerState.BREAKING else ["disabled"]
+        )
+        self.end_day_button.state(
+            ["disabled"] if state == TimerState.DAY_ENDED else ["!disabled"]
         )
 
     def _on_close(self) -> None:
