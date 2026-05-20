@@ -19,11 +19,14 @@ from app.data.models import BreakRecord
 from app.data.storage import JsonStorage, StorageError
 
 
-WINDOW_WIDTH = 340
-WINDOW_HEIGHT = 620
+WINDOW_WIDTH = 360
+WINDOW_HEIGHT = 540
 WINDOW_MARGIN_X = 18
-WINDOW_MARGIN_Y = 80
+WINDOW_MARGIN_Y = 64
 TICK_INTERVAL_MS = 1000
+
+BREAK_DIALOG_WIDTH = 320
+BREAK_DIALOG_HEIGHT = 250
 
 
 STATE_LABELS = {
@@ -50,12 +53,12 @@ class MainWindow:
         self.storage = storage or JsonStorage()
         self._after_id: str | None = None
         self._pending_break: CompletedBreak | None = None
+        self._break_dialog: tk.Toplevel | None = None
         self._session_break_records: list[BreakRecord] = []
 
         self.interval_var = tk.StringVar(
             value=str(self.timer.break_interval_minutes)
         )
-        self.water_ml_var = tk.StringVar(value="0")
         self.status_var = tk.StringVar()
         self.time_caption_var = tk.StringVar()
         self.time_var = tk.StringVar()
@@ -194,66 +197,6 @@ class MainWindow:
         self._add_stat_row(stats_frame, "目前休息", self.current_break_var, 4)
         self._add_stat_row(stats_frame, "上次休息", self.last_break_var, 5)
 
-        self.break_record_frame = ttk.LabelFrame(
-            container,
-            text="休息紀錄",
-            padding=10,
-        )
-        self.break_record_frame.columnconfigure(1, weight=1)
-
-        ttk.Label(self.break_record_frame, text="喝水量").grid(
-            row=0,
-            column=0,
-            sticky=tk.W,
-            pady=3,
-        )
-        ttk.Entry(
-            self.break_record_frame,
-            textvariable=self.water_ml_var,
-            width=10,
-            justify=tk.RIGHT,
-        ).grid(row=0, column=1, sticky=tk.W, padx=(8, 4), pady=3)
-        ttk.Label(self.break_record_frame, text="ml").grid(
-            row=0,
-            column=2,
-            sticky=tk.W,
-            pady=3,
-        )
-
-        ttk.Label(self.break_record_frame, text="備註").grid(
-            row=1,
-            column=0,
-            sticky=tk.NW,
-            pady=3,
-        )
-        self.note_text = tk.Text(
-            self.break_record_frame,
-            height=3,
-            width=22,
-            wrap=tk.WORD,
-        )
-        self.note_text.grid(
-            row=1,
-            column=1,
-            columnspan=2,
-            sticky=tk.EW,
-            padx=(8, 0),
-            pady=3,
-        )
-
-        self.save_break_button = ttk.Button(
-            self.break_record_frame,
-            text="儲存休息紀錄",
-            command=self._on_save_break_record,
-        )
-        self.save_break_button.grid(
-            row=2,
-            column=0,
-            columnspan=3,
-            sticky=tk.EW,
-            pady=(8, 0),
-        )
-
     def _add_stat_row(
         self,
         parent: ttk.Frame,
@@ -300,8 +243,8 @@ class MainWindow:
             return
 
         self._pending_break = completed_break
-        self._show_break_record_form()
         self._render(self.timer.snapshot())
+        self._show_break_record_dialog()
 
     def _run_timer_action(self, action: Callable[[], object]) -> None:
         try:
@@ -310,31 +253,101 @@ class MainWindow:
             messagebox.showwarning("無法執行", str(exc), parent=self.root)
         self._render(self.timer.snapshot())
 
-    def _on_save_break_record(self) -> None:
+    def _show_break_record_dialog(self) -> None:
         if self._pending_break is None:
-            messagebox.showwarning(
-                "沒有待儲存的休息",
-                "請先完成一次休息。",
-                parent=self.root,
-            )
+            return
+        if self._break_dialog is not None and self._break_dialog.winfo_exists():
+            self._break_dialog.lift()
             return
 
-        water_ml = self._read_water_ml()
+        dialog = tk.Toplevel(self.root)
+        self._break_dialog = dialog
+        dialog.title("休息紀錄")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        body = ttk.Frame(dialog, padding=14)
+        body.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(body, text="休息結束，請記錄這次休息。").pack(anchor=tk.W)
+        ttk.Label(
+            body,
+            text=f"本次休息：{self._pending_break.duration_minutes} 分鐘",
+        ).pack(anchor=tk.W, pady=(4, 12))
+
+        water_var = tk.StringVar(value="0")
+        water_row = ttk.Frame(body)
+        water_row.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(water_row, text="喝水量").pack(side=tk.LEFT)
+        water_entry = ttk.Entry(
+            water_row,
+            textvariable=water_var,
+            width=10,
+            justify=tk.RIGHT,
+        )
+        water_entry.pack(side=tk.LEFT, padx=(8, 4))
+        ttk.Label(water_row, text="ml").pack(side=tk.LEFT)
+
+        ttk.Label(body, text="備註（可選）").pack(anchor=tk.W)
+        note_text = tk.Text(body, height=3, width=32, wrap=tk.WORD)
+        note_text.pack(fill=tk.X, pady=(4, 10))
+
+        save_button = ttk.Button(
+            body,
+            text="儲存休息紀錄",
+            command=lambda: self._save_break_record_from_dialog(
+                dialog=dialog,
+                water_value=water_var.get(),
+                note=note_text.get("1.0", tk.END).strip(),
+            ),
+        )
+        save_button.pack(fill=tk.X)
+
+        dialog.protocol("WM_DELETE_WINDOW", self._on_break_dialog_close_attempt)
+        self._position_break_dialog(dialog)
+        water_entry.focus_set()
+
+    def _position_break_dialog(self, dialog: tk.Toplevel) -> None:
+        self.root.update_idletasks()
+        root_x = self.root.winfo_x()
+        root_y = self.root.winfo_y()
+        root_width = self.root.winfo_width()
+        root_height = self.root.winfo_height()
+        x = root_x + max(0, (root_width - BREAK_DIALOG_WIDTH) // 2)
+        y = root_y + max(0, (root_height - BREAK_DIALOG_HEIGHT) // 2)
+        dialog.geometry(f"{BREAK_DIALOG_WIDTH}x{BREAK_DIALOG_HEIGHT}+{x}+{y}")
+
+    def _on_break_dialog_close_attempt(self) -> None:
+        messagebox.showinfo(
+            "請先儲存",
+            "請先儲存休息紀錄，再回到下一輪工作。",
+            parent=self._break_dialog or self.root,
+        )
+
+    def _save_break_record_from_dialog(
+        self,
+        dialog: tk.Toplevel,
+        water_value: str,
+        note: str,
+    ) -> None:
+        water_ml = self._parse_water_ml(water_value, parent=dialog)
         if water_ml is None:
             return
 
-        note = self.note_text.get("1.0", tk.END).strip()
         break_record = self._build_break_record(water_ml=water_ml, note=note)
 
         try:
             self.storage.add_break_record(break_record)
         except (StorageError, ValueError) as exc:
-            messagebox.showerror("儲存失敗", str(exc), parent=self.root)
+            messagebox.showerror("儲存失敗", str(exc), parent=dialog)
             return
 
         self._session_break_records.append(break_record)
         self._pending_break = None
-        self._hide_break_record_form()
+        self._break_dialog = None
+        dialog.grab_release()
+        dialog.destroy()
         self._run_timer_action(self.timer.resume_work)
 
     def _read_interval_minutes(self) -> int | None:
@@ -363,18 +376,18 @@ class MainWindow:
 
         return interval_minutes
 
-    def _read_water_ml(self) -> int | None:
-        raw_value = self.water_ml_var.get().strip()
-        if not raw_value:
+    def _parse_water_ml(self, raw_value: str, parent: tk.Misc) -> int | None:
+        cleaned_value = raw_value.strip()
+        if not cleaned_value:
             return 0
 
         try:
-            water_ml = int(raw_value)
+            water_ml = int(cleaned_value)
         except ValueError:
             messagebox.showerror(
                 "輸入錯誤",
                 "喝水量必須是 0 或正整數。",
-                parent=self.root,
+                parent=parent,
             )
             return None
 
@@ -382,7 +395,7 @@ class MainWindow:
             messagebox.showerror(
                 "輸入錯誤",
                 "喝水量不可小於 0。",
-                parent=self.root,
+                parent=parent,
             )
             return None
 
@@ -400,14 +413,6 @@ class MainWindow:
             water_ml=water_ml,
             note=note,
         )
-
-    def _show_break_record_form(self) -> None:
-        self.water_ml_var.set("0")
-        self.note_text.delete("1.0", tk.END)
-        self.break_record_frame.pack(fill=tk.X, pady=(10, 0))
-
-    def _hide_break_record_form(self) -> None:
-        self.break_record_frame.pack_forget()
 
     def _render(self, snapshot: TimerSnapshot) -> None:
         state = snapshot.state
@@ -440,12 +445,11 @@ class MainWindow:
         self.water_total_var.set(f"{stats.water_ml} ml")
 
     def _update_button_states(self, state: TimerState) -> None:
+        pending_break = self._pending_break is not None
         self.start_button.state(["!disabled"] if state == TimerState.IDLE else ["disabled"])
         self.pause_button.state(["!disabled"] if state == TimerState.WORKING else ["disabled"])
         self.resume_button.state(
-            ["!disabled"]
-            if state == TimerState.PAUSED and self._pending_break is None
-            else ["disabled"]
+            ["!disabled"] if state == TimerState.PAUSED and not pending_break else ["disabled"]
         )
         self.restart_button.state(
             ["!disabled"]
@@ -456,7 +460,7 @@ class MainWindow:
                 TimerState.PAUSED,
                 TimerState.REMINDER,
             }
-            and self._pending_break is None
+            and not pending_break
             else ["disabled"]
         )
         self.snooze_button.state(
@@ -468,11 +472,12 @@ class MainWindow:
         self.return_work_button.state(
             ["!disabled"] if state == TimerState.BREAKING else ["disabled"]
         )
-        self.save_break_button.state(
-            ["!disabled"] if self._pending_break is not None else ["disabled"]
-        )
 
     def _on_close(self) -> None:
+        if self._break_dialog is not None and self._break_dialog.winfo_exists():
+            self._break_dialog.grab_release()
+            self._break_dialog.destroy()
+            self._break_dialog = None
         if self._after_id is not None:
             self.root.after_cancel(self._after_id)
             self._after_id = None

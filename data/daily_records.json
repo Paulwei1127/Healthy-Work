@@ -1,0 +1,27 @@
+{
+  "settings": {
+    "break_interval_minutes": 30
+  },
+  "break_records": [
+    {
+      "id": "a21ef163-2265-4082-a7a2-0c7a86a1ae08",
+      "date": "2026-05-20",
+      "start_time": "2026-05-20T16:07:03",
+      "end_time": "2026-05-20T16:07:05",
+      "duration_minutes": 1,
+      "water_ml": 50,
+      "note": ""
+    },
+    {
+      "id": "f11b46c3-1a94-49f7-9a96-3af147266db4",
+      "date": "2026-05-20",
+      "start_time": "2026-05-20T16:13:27",
+      "end_time": "2026-05-20T16:13:29",
+      "duration_minutes": 1,
+      "water_ml": 110,
+      "note": ""
+    }
+  ],
+  "daily_summaries": [],
+  "daily_work_minutes": {}
+}
