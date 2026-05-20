@@ -2,7 +2,7 @@
 
 Windows desktop MVP for healthier work habits.
 
-This repository has the project skeleton and the first data layer pieces. UI and timer logic will be added in later approved steps.
+This repository has the project skeleton, data layer, pure statistics/scoring logic, and pure timer state machine. UI logic will be added in later approved steps.
 
 ## Planned MVP
 
@@ -33,6 +33,21 @@ Current storage responsibilities:
 - Back up invalid JSON files with an `.invalid-YYYYMMDD-HHMMSS.json` suffix
 - Store app settings, break records, daily summaries, and per-day work minutes
 - Validate basic data shapes before saving
+
+## Timer State Machine
+
+The core timer is UI-independent and lives in `app/core/timer.py`.
+
+Supported states:
+
+- `Idle`
+- `Working`
+- `Paused`
+- `Reminder`
+- `Breaking`
+- `DayEnded`
+
+Only `Working` counts toward total work time. `Paused`, `Reminder`, and `Breaking` do not count as work time. Completing a break returns a `CompletedBreak` object with start time, end time, duration seconds, and rounded-up duration minutes.
 
 ## Project Structure
 
