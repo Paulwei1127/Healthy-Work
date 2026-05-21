@@ -337,6 +337,11 @@ class MainWindow:
                 background: #df5d91;
                 border-color: #df5d91;
             }
+            QPushButton#PrimaryButton:disabled {
+                color: #b8a9b2;
+                background: #eadde4;
+                border-color: #dcced6;
+            }
             QPushButton#EndButton {
                 color: #ffffff;
                 background: #6aa6a1;
@@ -958,12 +963,19 @@ class MainWindow:
 
         if pending_break or state == TimerState.BREAKING:
             self.start_button.setText("回到工作")
+            self.start_button.setToolTip("儲存休息紀錄並回到工作倒數。")
         elif state == TimerState.PAUSED:
             self.start_button.setText("繼續工作")
+            self.start_button.setToolTip("繼續工作倒數。")
         elif state == TimerState.REMINDER:
             self.start_button.setText("開始休息")
+            self.start_button.setToolTip("開始本次休息。")
         else:
             self.start_button.setText("開始工作")
+            if state == TimerState.WORKING:
+                self.start_button.setToolTip("已在工作倒數中")
+            else:
+                self.start_button.setToolTip("開始工作倒數。")
 
         self.start_button.setEnabled(state != TimerState.WORKING)
         self.pause_button.setEnabled(state == TimerState.WORKING)
@@ -983,7 +995,6 @@ class MainWindow:
             in {
                 TimerState.WORKING,
                 TimerState.PAUSED,
-                TimerState.REMINDER,
             }
             and not pending_break
         )

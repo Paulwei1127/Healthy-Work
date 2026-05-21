@@ -73,6 +73,7 @@ def test_idle_primary_button_starts_work(tmp_path) -> None:
     assert window.timer.snapshot().state == TimerState.WORKING
     assert window.start_button.text() == "開始工作"
     assert not window.start_button.isEnabled()
+    assert window.start_button.toolTip() == "已在工作倒數中"
     window.qt_timer.stop()
     window.window.close()
 
@@ -101,6 +102,15 @@ def test_control_area_does_not_create_legacy_resume_or_return_buttons(tmp_path) 
 
     assert not hasattr(window, "resume_button")
     assert not hasattr(window, "return_work_button")
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_primary_button_has_disabled_stylesheet_rule(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    assert "QPushButton#PrimaryButton:disabled" in window.window.styleSheet()
     window.qt_timer.stop()
     window.window.close()
 
@@ -249,6 +259,8 @@ def test_reminder_primary_button_starts_break(tmp_path) -> None:
 
     assert window.timer.snapshot().state == TimerState.REMINDER
     assert window.start_button.text() == "開始休息"
+    assert window.start_button.toolTip() == "開始本次休息。"
+    assert not window.start_break_button.isEnabled()
 
     window.start_button.click()
 
