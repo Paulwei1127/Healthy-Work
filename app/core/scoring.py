@@ -73,6 +73,9 @@ def generate_health_suggestions(statistics: DailyStatistics) -> list[str]:
     else:
         suggestions.append("今天休息時間偏少，建議增加短暫走動與眼睛休息。")
 
+    suggestions.append("眼睛休息可以採用 20-20-20：每 20 分鐘看向遠方 20 秒。")
+    suggestions.append("休息時建議伸展肩頸、起身走動，順手補充水分。")
+
     if not suggestions:
         suggestions.append("今天整體工作節奏不錯。")
 

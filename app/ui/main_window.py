@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import os
+import time
 from datetime import date
 from typing import Callable
 
@@ -41,8 +42,9 @@ from app.core.timer import (
     TimerStateError,
     WorkTimer,
 )
-from app.data.models import BreakRecord
+from app.data.models import AppSettings, BreakRecord
 from app.data.storage import JsonStorage, StorageError
+from app.ui.reminder_dialog import ReminderAction, ReminderDialog
 from app.ui.report_dialog import ReportDialog
 
 
@@ -118,26 +120,45 @@ class MainWindow:
         self,
         timer: WorkTimer | None = None,
         storage: JsonStorage | None = None,
+        date_provider: Callable[[], date] | None = None,
     ) -> None:
         _configure_high_dpi()
         self.app = QApplication.instance() or QApplication(sys.argv)
         self.font_family = _pick_font_family()
         self.app.setFont(QFont(self.font_family, BASE_FONT_POINT_SIZE))
         self.storage = storage or JsonStorage()
-        self.today = date.today().isoformat()
+        self._date_provider = date_provider or date.today
+        self.today = self._current_date()
         self._startup_storage_message: str | None = None
-        self._session_break_records, initial_work_minutes = self._load_today_data()
+        (
+            self._session_break_records,
+            initial_work_minutes,
+            stored_interval_minutes,
+        ) = self._load_startup_data()
 
-        self.timer = timer or WorkTimer(initial_work_seconds=initial_work_minutes * 60)
+        self.timer = timer or WorkTimer(
+            break_interval_minutes=stored_interval_minutes,
+            initial_work_seconds=initial_work_minutes * 60,
+        )
         if timer is not None:
-            self.timer.reset_day(initial_work_seconds=initial_work_minutes * 60)
+            self.timer.reset_day(
+                break_interval_minutes=stored_interval_minutes,
+                initial_work_seconds=initial_work_minutes * 60,
+            )
 
         self._pending_break: CompletedBreak | None = None
+        self._last_tick_monotonic = time.monotonic()
+        self._last_saved_work_date = self.today
+        self._last_saved_work_minutes = initial_work_minutes
+        self._reminder_prompted_for_current_round = False
+        self._reminder_dialog_open = False
+        self._date_rollover_pending = False
 
         self.window = QMainWindow()
         self.window.setWindowTitle("健康工作小工具")
         self.window.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.window.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
+        self.window.closeEvent = self._on_window_close  # type: ignore[method-assign]
         self._apply_styles()
         self._build_widgets()
         self._position_bottom_right()
@@ -154,8 +175,13 @@ class MainWindow:
         self.qt_timer.start()
         self.app.exec_()
 
-    def _load_today_data(self) -> tuple[list[BreakRecord], int]:
+    def _current_date(self) -> str:
+        return self._date_provider().isoformat()
+
+    def _load_startup_data(self) -> tuple[list[BreakRecord], int, int]:
+        settings_interval = AppSettings().break_interval_minutes
         try:
+            settings_interval = self.storage.load_settings().break_interval_minutes
             records = self.storage.list_break_records(self.today)
             work_minutes = self.storage.get_work_minutes(self.today)
         except (StorageError, ValueError) as exc:
@@ -163,13 +189,13 @@ class MainWindow:
                 "讀取今日資料時發生問題，已先用 0 初始化畫面。\n"
                 f"原因：{exc}"
             )
-            return [], 0
+            return [], 0, settings_interval
 
         recovery_message = self.storage.consume_recovery_message()
         if recovery_message:
             self._startup_storage_message = recovery_message
 
-        return records, work_minutes
+        return records, work_minutes, settings_interval
 
     def _show_startup_storage_message(self) -> None:
         if not self._startup_storage_message:
@@ -488,23 +514,120 @@ class MainWindow:
         y = max(0, screen.bottom() - WINDOW_HEIGHT - WINDOW_MARGIN_Y)
         self.window.move(x, y)
 
+    def _check_date_rollover(self) -> bool:
+        current_date = self._current_date()
+        if current_date == self.today:
+            return False
+
+        snapshot = self.timer.snapshot()
+        if snapshot.state == TimerState.BREAKING or self._pending_break is not None:
+            self._date_rollover_pending = True
+            return False
+
+        self._save_work_minutes_if_needed(force=True)
+        self.today = current_date
+        self._date_rollover_pending = False
+
+        try:
+            self._session_break_records = self.storage.list_break_records(self.today)
+            work_minutes = self.storage.get_work_minutes(self.today)
+        except (StorageError, ValueError) as exc:
+            QMessageBox.warning(
+                self.window,
+                "日期切換提醒",
+                f"切換到新的一天時讀取資料失敗，今日統計將先從 0 開始。\n原因：{exc}",
+            )
+            self._session_break_records = []
+            work_minutes = 0
+
+        self.timer.reset_day(
+            break_interval_minutes=self.timer.break_interval_minutes,
+            initial_work_seconds=work_minutes * 60,
+        )
+        self._last_saved_work_date = self.today
+        self._last_saved_work_minutes = work_minutes
+        self._last_tick_monotonic = time.monotonic()
+        self._reminder_prompted_for_current_round = False
+        self._render(self.timer.snapshot())
+        return True
+
+    def _save_work_minutes_if_needed(
+        self,
+        force: bool = False,
+        show_errors: bool = False,
+    ) -> None:
+        work_minutes = self.timer.snapshot().total_work_seconds // 60
+        if (
+            not force
+            and self._last_saved_work_date == self.today
+            and work_minutes == self._last_saved_work_minutes
+        ):
+            return
+
+        try:
+            self.storage.set_work_minutes(self.today, work_minutes)
+        except (StorageError, ValueError) as exc:
+            if show_errors:
+                QMessageBox.warning(self.window, "工作時間保存失敗", str(exc))
+            return
+
+        self._last_saved_work_date = self.today
+        self._last_saved_work_minutes = work_minutes
+
+    def _save_current_settings(self, interval_minutes: int) -> None:
+        try:
+            self.storage.save_settings(
+                AppSettings(break_interval_minutes=interval_minutes)
+            )
+        except (StorageError, ValueError) as exc:
+            QMessageBox.warning(self.window, "設定保存失敗", str(exc))
+
+    def _on_window_close(self, event) -> None:  # type: ignore[no-untyped-def]
+        self._save_work_minutes_if_needed(force=True, show_errors=True)
+        event.accept()
+
     def _on_tick(self) -> None:
-        snapshot = self.timer.tick(1)
+        if self._check_date_rollover():
+            return
+
+        now = time.monotonic()
+        elapsed_seconds = int(now - self._last_tick_monotonic)
+        if elapsed_seconds <= 0:
+            return
+
+        self._last_tick_monotonic += elapsed_seconds
+        snapshot = self.timer.tick(elapsed_seconds)
         self._render(snapshot)
+        self._save_work_minutes_if_needed()
+        self._maybe_show_reminder_dialog(snapshot)
 
     def _on_start_work(self) -> None:
+        self._check_date_rollover()
         interval_minutes = self._read_interval_minutes()
         if interval_minutes is None:
             return
 
-        self._run_timer_action(lambda: self.timer.start_work(interval_minutes))
+        if self._run_timer_action(lambda: self._start_work_from_current_state(interval_minutes)):
+            self._save_current_settings(interval_minutes)
+
+    def _start_work_from_current_state(self, interval_minutes: int) -> TimerSnapshot:
+        if self.timer.snapshot().state == TimerState.DAY_ENDED:
+            existing_work_seconds = self.timer.snapshot().total_work_seconds
+            self.timer.reset_day(
+                break_interval_minutes=interval_minutes,
+                initial_work_seconds=existing_work_seconds,
+            )
+
+        return self.timer.start_work(interval_minutes)
 
     def _on_restart_countdown(self) -> None:
+        self._check_date_rollover()
         interval_minutes = self._read_interval_minutes()
         if interval_minutes is None:
             return
 
-        self._run_timer_action(lambda: self.timer.restart_countdown(interval_minutes))
+        if self._run_timer_action(lambda: self.timer.restart_countdown(interval_minutes)):
+            self._save_current_settings(interval_minutes)
 
     def _on_return_to_work(self) -> None:
         try:
@@ -525,33 +648,87 @@ class MainWindow:
 
         self._run_timer_action(self.timer.start_break_early)
 
-    def _run_timer_action(self, action: Callable[[], object]) -> None:
+    def _maybe_show_reminder_dialog(self, snapshot: TimerSnapshot) -> None:
+        if snapshot.state != TimerState.REMINDER:
+            if not self._reminder_dialog_open:
+                self._reminder_prompted_for_current_round = False
+            return
+
+        if (
+            self._reminder_prompted_for_current_round
+            or self._reminder_dialog_open
+        ):
+            return
+
+        self._reminder_prompted_for_current_round = True
+        self._show_reminder_dialog()
+
+    def _show_reminder_dialog(self) -> None:
+        if self.timer.snapshot().state != TimerState.REMINDER:
+            return
+
+        action: ReminderAction | None = None
+        self._reminder_dialog_open = True
+        try:
+            QApplication.beep()
+            self.app.alert(self.window, 0)
+            dialog = ReminderDialog(self.window)
+            dialog.exec_()
+            action = dialog.action
+        finally:
+            self._reminder_dialog_open = False
+
+        if self.timer.snapshot().state != TimerState.REMINDER or action is None:
+            return
+
+        if action == ReminderAction.START_BREAK:
+            self._run_timer_action(self.timer.start_break)
+        elif action == ReminderAction.SNOOZE:
+            self._run_timer_action(self.timer.snooze)
+        elif action == ReminderAction.RESTART:
+            self._run_timer_action(
+                lambda: self.timer.restart_countdown(
+                    self.timer.break_interval_minutes
+                )
+            )
+
+    def _run_timer_action(self, action: Callable[[], object]) -> bool:
         try:
             action()
         except (TimerStateError, ValueError) as exc:
             QMessageBox.warning(self.window, "無法執行", str(exc))
-        self._render(self.timer.snapshot())
+            return False
+
+        self._last_tick_monotonic = time.monotonic()
+        self._save_work_minutes_if_needed(force=True)
+        snapshot = self.timer.snapshot()
+        self._render(snapshot)
+        self._maybe_show_reminder_dialog(snapshot)
+        return True
 
     def _on_end_day(self) -> None:
+        self._check_date_rollover()
         snapshot = self.timer.snapshot()
         if snapshot.state == TimerState.BREAKING:
-            QMessageBox.information(
-                self.window,
-                "尚在休息中",
-                "請先按「回到工作」並儲存休息紀錄，再結束今天。",
-            )
-            return
+            try:
+                self._pending_break = self.timer.return_to_work(
+                    auto_start_next_round=False
+                )
+            except TimerStateError as exc:
+                QMessageBox.warning(self.window, "無法執行", str(exc))
+                return
+
+            self._last_tick_monotonic = time.monotonic()
+            self._render(self.timer.snapshot())
+            if not self._show_break_record_dialog(resume_after_save=False):
+                return
 
         if self._pending_break is not None:
-            QMessageBox.information(
-                self.window,
-                "休息紀錄尚未儲存",
-                "請先儲存目前的休息紀錄，再結束今天。",
-            )
-            self._show_break_record_dialog()
-            return
+            if not self._show_break_record_dialog(resume_after_save=False):
+                return
 
         try:
+            self._save_work_minutes_if_needed(force=True)
             statistics = calculate_daily_statistics(
                 date=self.today,
                 work_minutes=self.timer.snapshot().total_work_seconds // 60,
@@ -568,13 +745,13 @@ class MainWindow:
         self._render(self.timer.snapshot())
         ReportDialog(self.window, summary).show()
 
-    def _show_break_record_dialog(self) -> None:
+    def _show_break_record_dialog(self, resume_after_save: bool = True) -> bool:
         if self._pending_break is None:
-            return
+            return True
 
         dialog = BreakRecordDialog(self.window, self._pending_break)
         if dialog.exec_() != QDialog.Accepted:
-            return
+            return False
 
         break_record = self._build_break_record(
             water_ml=dialog.water_ml,
@@ -585,11 +762,22 @@ class MainWindow:
             self.storage.add_break_record(break_record)
         except (StorageError, ValueError) as exc:
             QMessageBox.critical(self.window, "儲存失敗", str(exc))
-            return
+            return False
 
         self._session_break_records.append(break_record)
         self._pending_break = None
-        self._run_timer_action(self.timer.resume_work)
+        if (
+            resume_after_save
+            and self._date_rollover_pending
+            and self._check_date_rollover()
+        ):
+            return True
+
+        if resume_after_save:
+            self._run_timer_action(self.timer.resume_work)
+        else:
+            self._render(self.timer.snapshot())
+        return True
 
     def _read_interval_minutes(self) -> int | None:
         raw_value = self.interval_input.text().strip()
@@ -624,6 +812,9 @@ class MainWindow:
 
     def _render(self, snapshot: TimerSnapshot) -> None:
         state = snapshot.state
+        if state != TimerState.REMINDER and not self._reminder_dialog_open:
+            self._reminder_prompted_for_current_round = False
+
         self.status_label.setText(STATE_LABELS[state])
         foreground, background = STATE_COLORS[state]
         self.status_label.setStyleSheet(
@@ -660,7 +851,7 @@ class MainWindow:
 
     def _update_button_states(self, state: TimerState) -> None:
         pending_break = self._pending_break is not None
-        self.start_button.setEnabled(state == TimerState.IDLE)
+        self.start_button.setEnabled(state in {TimerState.IDLE, TimerState.DAY_ENDED})
         self.pause_button.setEnabled(state == TimerState.WORKING)
         self.resume_button.setEnabled(state == TimerState.PAUSED and not pending_break)
         self.restart_button.setEnabled(

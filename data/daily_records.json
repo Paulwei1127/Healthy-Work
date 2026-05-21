@@ -29,6 +29,51 @@
       "duration_minutes": 1,
       "water_ml": 10,
       "note": ""
+    },
+    {
+      "id": "01ce8845-a536-46a0-b202-febc03212f96",
+      "date": "2026-05-21",
+      "start_time": "2026-05-21T09:33:43",
+      "end_time": "2026-05-21T09:33:49",
+      "duration_minutes": 1,
+      "water_ml": 5,
+      "note": ""
+    },
+    {
+      "id": "57a2e4bc-6b71-4520-a8f3-d6a952ca20bb",
+      "date": "2026-05-21",
+      "start_time": "2026-05-21T09:33:55",
+      "end_time": "2026-05-21T09:34:07",
+      "duration_minutes": 1,
+      "water_ml": 10,
+      "note": ""
+    },
+    {
+      "id": "53c4a935-c020-4d16-9a13-589dc40bc433",
+      "date": "2026-05-21",
+      "start_time": "2026-05-21T09:37:10",
+      "end_time": "2026-05-21T09:37:49",
+      "duration_minutes": 2,
+      "water_ml": 0,
+      "note": ""
+    },
+    {
+      "id": "2228f45e-fa92-4fb6-8853-72b039603c27",
+      "date": "2026-05-21",
+      "start_time": "2026-05-21T09:43:48",
+      "end_time": "2026-05-21T09:43:49",
+      "duration_minutes": 1,
+      "water_ml": 0,
+      "note": ""
+    },
+    {
+      "id": "58297d49-fdc1-4354-bf2a-ec92edc00f99",
+      "date": "2026-05-21",
+      "start_time": "2026-05-21T09:44:10",
+      "end_time": "2026-05-21T09:44:12",
+      "duration_minutes": 1,
+      "water_ml": 0,
+      "note": ""
     }
   ],
   "daily_summaries": [
@@ -50,23 +95,25 @@
     },
     {
       "date": "2026-05-21",
-      "work_minutes": 0,
-      "break_minutes": 1,
-      "break_count": 1,
-      "water_ml": 10,
-      "average_work_session_minutes": 0.0,
-      "health_score": 45,
+      "work_minutes": 1,
+      "break_minutes": 7,
+      "break_count": 6,
+      "water_ml": 25,
+      "average_work_session_minutes": 0.17,
+      "health_score": 60,
       "suggestions": [
-        "建議增加休息次數，讓工作節奏更穩定。",
+        "今天休息頻率良好。",
         "今天喝水量偏低，建議增加喝水量。",
         "今天平均工作時段控制得不錯。",
-        "今天休息時間偏少，建議增加短暫走動與眼睛休息。"
+        "今天休息時間偏少，建議增加短暫走動與眼睛休息。",
+        "眼睛休息可以採用 20-20-20：每 20 分鐘看向遠方 20 秒。",
+        "休息時建議伸展肩頸、起身走動，順手補充水分。"
       ],
-      "created_at": "2026-05-21T09:09:21"
+      "created_at": "2026-05-21T09:44:25"
     }
   ],
   "daily_work_minutes": {
     "2026-05-20": 1,
-    "2026-05-21": 0
+    "2026-05-21": 1
   }
 }

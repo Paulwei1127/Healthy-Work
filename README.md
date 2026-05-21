@@ -9,6 +9,7 @@ This repository has the project skeleton, data layer, pure statistics/scoring lo
 - Rest reminder interval setting
 - Countdown timer with pause and restart
 - Early break from the working or paused state
+- Active break reminder dialog when time is up
 - Break reminder dialog
 - Automatic break timing
 - Break records with water intake and optional notes
@@ -35,6 +36,22 @@ python -m app.main
 The current UI is connected to `WorkTimer`, can save completed break records to `data/daily_records.json`, and can generate/save an end-of-day `DailySummary`.
 On startup, the UI loads today's saved break records and work minutes once, initializes the timer as `Idle`, and displays today's totals immediately.
 The PyQt5 UI enables Windows high-DPI scaling, uses a rounded Windows font stack for readability, and keeps the main content in a resizable scrollable window.
+Work minutes are saved periodically, settings are saved when the interval is changed, and the app checks for date rollover while running.
+
+## Test
+
+```powershell
+python -m pytest
+```
+
+The tests cover timer elapsed ticks, storage settings/work minutes, statistics date filtering, reminder prompt deduplication, and basic UI persistence flows.
+
+## Future Enhancements
+
+- Quick water-only record button
+- System tray minimize behavior
+- Optional startup-on-login setting
+- Optional richer sound or Windows notification integration
 
 ## Data Storage
 

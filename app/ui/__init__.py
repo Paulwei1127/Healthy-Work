@@ -1,1 +1,1 @@
-"""UI package for Tkinter windows and dialogs."""
+"""UI package for PyQt5 windows and dialogs."""
