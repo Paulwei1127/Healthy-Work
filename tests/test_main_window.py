@@ -62,6 +62,21 @@ def test_settings_are_saved_when_work_starts(tmp_path) -> None:
     window.window.close()
 
 
+def test_idle_primary_button_starts_work(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    assert window.start_button.text() == "開始工作"
+
+    window.start_button.click()
+
+    assert window.timer.snapshot().state == TimerState.WORKING
+    assert window.start_button.text() == "開始工作"
+    assert not window.start_button.isEnabled()
+    window.qt_timer.stop()
+    window.window.close()
+
+
 def test_interval_input_is_read_only_while_working(tmp_path) -> None:
     storage = JsonStorage(tmp_path / "daily_records.json")
     window = MainWindow(storage=storage)
@@ -76,6 +91,16 @@ def test_interval_input_is_read_only_while_working(tmp_path) -> None:
     window._run_timer_action(window.timer.pause)
 
     assert not window.interval_input.isReadOnly()
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_control_area_does_not_create_legacy_resume_or_return_buttons(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    assert not hasattr(window, "resume_button")
+    assert not hasattr(window, "return_work_button")
     window.qt_timer.stop()
     window.window.close()
 
@@ -146,7 +171,7 @@ def test_breaking_interval_change_applies_to_next_work_round(tmp_path, monkeypat
 
     window.interval_input.setText("30")
     window.timer.tick(120)
-    window._on_return_to_work()
+    window.start_button.click()
 
     snapshot = window.timer.snapshot()
     assert snapshot.state == TimerState.WORKING
@@ -154,6 +179,41 @@ def test_breaking_interval_change_applies_to_next_work_round(tmp_path, monkeypat
     assert snapshot.remaining_seconds == 30 * 60
     assert storage.load_settings().break_interval_minutes == 30
     assert storage.list_break_records(window.today)[0].water_ml == 250
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_breaking_primary_button_cancel_keeps_pending_break(tmp_path, monkeypatch) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    class CanceledBreakRecordDialog:
+        water_ml = 0
+        note = ""
+
+        def __init__(self, parent, completed_break) -> None:
+            pass
+
+        def exec_(self) -> int:
+            return QDialog.Rejected
+
+    monkeypatch.setattr(
+        main_window_module,
+        "BreakRecordDialog",
+        CanceledBreakRecordDialog,
+    )
+
+    window._on_start_work()
+    window._on_start_break()
+    assert window.timer.snapshot().state == TimerState.BREAKING
+    assert window.start_button.text() == "回到工作"
+
+    window.start_button.click()
+
+    assert window.timer.snapshot().state == TimerState.PAUSED
+    assert window._pending_break is not None
+    assert window.start_button.text() == "回到工作"
+    assert not storage.list_break_records(window.today)
     window.qt_timer.stop()
     window.window.close()
 
@@ -166,13 +226,33 @@ def test_paused_interval_change_is_saved_and_applied_on_resume(tmp_path) -> None
     window._run_timer_action(window.timer.pause)
     window.interval_input.setText("35")
 
-    assert window._on_resume_work() is True
+    assert window.start_button.text() == "繼續工作"
+
+    window.start_button.click()
 
     snapshot = window.timer.snapshot()
     assert snapshot.state == TimerState.WORKING
     assert snapshot.break_interval_minutes == 35
     assert snapshot.remaining_seconds == 35 * 60
     assert storage.load_settings().break_interval_minutes == 35
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_reminder_primary_button_starts_break(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    window._on_start_work()
+    window.timer.tick(45 * 60)
+    window._render(window.timer.snapshot())
+
+    assert window.timer.snapshot().state == TimerState.REMINDER
+    assert window.start_button.text() == "開始休息"
+
+    window.start_button.click()
+
+    assert window.timer.snapshot().state == TimerState.BREAKING
     window.qt_timer.stop()
     window.window.close()
 
@@ -238,7 +318,7 @@ def test_invalid_interval_does_not_save_or_change_paused_state(tmp_path, monkeyp
     window._run_timer_action(window.timer.pause)
     window.interval_input.setText("0")
 
-    assert window._on_resume_work() is False
+    window.start_button.click()
 
     snapshot = window.timer.snapshot()
     assert snapshot.state == TimerState.PAUSED

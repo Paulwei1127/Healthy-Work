@@ -433,33 +433,33 @@ class MainWindow:
         self.start_button.clicked.connect(self._on_start_work)
         self.pause_button = QPushButton("暫停")
         self.pause_button.clicked.connect(lambda: self._run_timer_action(self.timer.pause))
-        self.resume_button = QPushButton("繼續")
-        self.resume_button.clicked.connect(self._on_resume_work)
         self.restart_button = QPushButton("重新開始")
         self.restart_button.clicked.connect(self._on_restart_countdown)
         self.snooze_button = QPushButton("延後 5 分鐘")
         self.snooze_button.clicked.connect(self._on_snooze)
         self.start_break_button = QPushButton("立即休息")
         self.start_break_button.clicked.connect(self._on_start_break)
-        self.return_work_button = QPushButton("回到工作")
-        self.return_work_button.clicked.connect(self._on_return_to_work)
         self.end_day_button = QPushButton("結束今天")
         self.end_day_button.setObjectName("EndButton")
         self.end_day_button.clicked.connect(self._on_end_day)
 
-        buttons = [
+        for button in [
             self.start_button,
             self.pause_button,
-            self.resume_button,
             self.restart_button,
             self.snooze_button,
             self.start_break_button,
-            self.return_work_button,
             self.end_day_button,
-        ]
-        for index, button in enumerate(buttons):
+        ]:
             button.setMinimumHeight(36)
-            control_layout.addWidget(button, index // 2, index % 2)
+
+        self.start_button.setMinimumHeight(42)
+        control_layout.addWidget(self.start_button, 0, 0, 1, 2)
+        control_layout.addWidget(self.pause_button, 1, 0)
+        control_layout.addWidget(self.restart_button, 1, 1)
+        control_layout.addWidget(self.snooze_button, 2, 0)
+        control_layout.addWidget(self.start_break_button, 2, 1)
+        control_layout.addWidget(self.end_day_button, 3, 0, 1, 2)
         control_layout.setColumnStretch(0, 1)
         control_layout.setColumnStretch(1, 1)
         layout.addWidget(control_card)
@@ -648,6 +648,24 @@ class MainWindow:
 
     def _on_start_work(self) -> None:
         self._check_date_rollover()
+        state = self.timer.snapshot().state
+
+        if self._pending_break is not None:
+            self._show_break_record_dialog()
+            return
+
+        if state == TimerState.PAUSED:
+            self._resume_work_after_pause()
+            return
+
+        if state == TimerState.BREAKING:
+            self._finish_break_and_prompt_record()
+            return
+
+        if state == TimerState.REMINDER:
+            self._on_start_break()
+            return
+
         interval_minutes = self._apply_interval_setting()
         if interval_minutes is None:
             return
@@ -676,7 +694,7 @@ class MainWindow:
         if self._run_timer_action(lambda: self.timer.restart_countdown(interval_minutes)):
             self._last_valid_interval_minutes = interval_minutes
 
-    def _on_resume_work(self) -> bool:
+    def _resume_work_after_pause(self) -> bool:
         if self._apply_interval_setting() is None:
             return False
 
@@ -686,16 +704,17 @@ class MainWindow:
         if self._run_timer_action(self.timer.snooze):
             self._restore_invalid_interval_after_action()
 
-    def _on_return_to_work(self) -> None:
+    def _finish_break_and_prompt_record(self) -> bool:
         try:
             completed_break = self.timer.return_to_work(auto_start_next_round=False)
         except TimerStateError as exc:
             QMessageBox.warning(self.window, "無法執行", str(exc))
-            return
+            return False
 
         self._pending_break = completed_break
+        self._last_tick_monotonic = time.monotonic()
         self._render(self.timer.snapshot())
-        self._show_break_record_dialog()
+        return self._show_break_record_dialog()
 
     def _on_start_break(self) -> None:
         snapshot = self.timer.snapshot()
@@ -834,7 +853,7 @@ class MainWindow:
             return True
 
         if resume_after_save:
-            self._on_resume_work()
+            self._resume_work_after_pause()
         else:
             self._render(self.timer.snapshot())
         return True
@@ -937,9 +956,17 @@ class MainWindow:
             self.interval_input.setToolTip("設定下一輪工作倒數的休息提醒間隔。")
             self.interval_input.setStyleSheet("")
 
-        self.start_button.setEnabled(state in {TimerState.IDLE, TimerState.DAY_ENDED})
+        if pending_break or state == TimerState.BREAKING:
+            self.start_button.setText("回到工作")
+        elif state == TimerState.PAUSED:
+            self.start_button.setText("繼續工作")
+        elif state == TimerState.REMINDER:
+            self.start_button.setText("開始休息")
+        else:
+            self.start_button.setText("開始工作")
+
+        self.start_button.setEnabled(state != TimerState.WORKING)
         self.pause_button.setEnabled(state == TimerState.WORKING)
-        self.resume_button.setEnabled(state == TimerState.PAUSED and not pending_break)
         self.restart_button.setEnabled(
             state
             in {
@@ -960,7 +987,6 @@ class MainWindow:
             }
             and not pending_break
         )
-        self.return_work_button.setEnabled(state == TimerState.BREAKING)
         self.end_day_button.setEnabled(state != TimerState.DAY_ENDED)
 
 
