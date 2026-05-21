@@ -1,11 +1,36 @@
-"""Tkinter main window for the MVP desktop widget."""
+"""PyQt5 main window for the desktop widget."""
 
 from __future__ import annotations
 
-import tkinter as tk
+import sys
+import os
 from datetime import date
-from tkinter import messagebox, ttk
 from typing import Callable
+
+try:
+    from PyQt5.QtCore import Qt, QTimer
+    from PyQt5.QtGui import QFont, QFontDatabase, QIntValidator
+    from PyQt5.QtWidgets import (
+        QApplication,
+        QDialog,
+        QFrame,
+        QGridLayout,
+        QHBoxLayout,
+        QLabel,
+        QLineEdit,
+        QMainWindow,
+        QMessageBox,
+        QPushButton,
+        QScrollArea,
+        QTextEdit,
+        QVBoxLayout,
+        QWidget,
+    )
+except ImportError as exc:  # pragma: no cover - depends on local installation.
+    raise RuntimeError(
+        "PyQt5 is required for the current UI. "
+        "Install it with: pip install -r requirements.txt"
+    ) from exc
 
 from app.core.scoring import create_daily_summary
 from app.core.statistics import calculate_daily_statistics
@@ -21,36 +46,83 @@ from app.data.storage import JsonStorage, StorageError
 from app.ui.report_dialog import ReportDialog
 
 
-WINDOW_WIDTH = 360
-WINDOW_HEIGHT = 580
+WINDOW_WIDTH = 440
+WINDOW_HEIGHT = 660
+WINDOW_MIN_WIDTH = 380
+WINDOW_MIN_HEIGHT = 520
 WINDOW_MARGIN_X = 18
 WINDOW_MARGIN_Y = 64
 TICK_INTERVAL_MS = 1000
 
-BREAK_DIALOG_WIDTH = 320
-BREAK_DIALOG_HEIGHT = 250
+BREAK_DIALOG_WIDTH = 400
+BREAK_DIALOG_HEIGHT = 360
+
+BASE_FONT_POINT_SIZE = 11
+FONT_CANDIDATES = (
+    "Microsoft JhengHei UI",
+    "Microsoft JhengHei",
+    "Yu Gothic UI",
+    "Segoe UI",
+)
 
 
 STATE_LABELS = {
-    TimerState.IDLE: "Idle（尚未開始）",
-    TimerState.WORKING: "Working（工作中）",
-    TimerState.PAUSED: "Paused（已暫停）",
-    TimerState.REMINDER: "Reminder（提醒中）",
-    TimerState.BREAKING: "Breaking（休息中）",
-    TimerState.DAY_ENDED: "DayEnded（今日已結束）",
+    TimerState.IDLE: "尚未開始",
+    TimerState.WORKING: "工作中",
+    TimerState.PAUSED: "已暫停",
+    TimerState.REMINDER: "提醒時間到",
+    TimerState.BREAKING: "休息中",
+    TimerState.DAY_ENDED: "今日已結束",
 }
 
 
+STATE_COLORS = {
+    TimerState.IDLE: ("#6b7280", "#f3f4f6"),
+    TimerState.WORKING: ("#166534", "#dcfce7"),
+    TimerState.PAUSED: ("#92400e", "#fef3c7"),
+    TimerState.REMINDER: ("#9f1239", "#ffe4e6"),
+    TimerState.BREAKING: ("#075985", "#e0f2fe"),
+    TimerState.DAY_ENDED: ("#5b21b6", "#ede9fe"),
+}
+
+
+_HIGH_DPI_CONFIGURED = False
+
+
+def _configure_high_dpi() -> None:
+    """Enable PyQt5 high-DPI behavior before the QApplication is created."""
+    global _HIGH_DPI_CONFIGURED
+    if _HIGH_DPI_CONFIGURED:
+        return
+
+    os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
+    os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "1")
+    if QApplication.instance() is None:
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    _HIGH_DPI_CONFIGURED = True
+
+
+def _pick_font_family() -> str:
+    available_families = set(QFontDatabase().families())
+    for family in FONT_CANDIDATES:
+        if family in available_families:
+            return family
+    return "Segoe UI"
+
+
 class MainWindow:
-    """Small Tkinter window connected to WorkTimer and JsonStorage."""
+    """Small PyQt5 window connected to WorkTimer and JsonStorage."""
 
     def __init__(
         self,
-        root: tk.Tk | None = None,
         timer: WorkTimer | None = None,
         storage: JsonStorage | None = None,
     ) -> None:
-        self.root = root or tk.Tk()
+        _configure_high_dpi()
+        self.app = QApplication.instance() or QApplication(sys.argv)
+        self.font_family = _pick_font_family()
+        self.app.setFont(QFont(self.font_family, BASE_FONT_POINT_SIZE))
         self.storage = storage or JsonStorage()
         self.today = date.today().isoformat()
         self._startup_storage_message: str | None = None
@@ -60,31 +132,27 @@ class MainWindow:
         if timer is not None:
             self.timer.reset_day(initial_work_seconds=initial_work_minutes * 60)
 
-        self._after_id: str | None = None
         self._pending_break: CompletedBreak | None = None
-        self._break_dialog: tk.Toplevel | None = None
 
-        self.interval_var = tk.StringVar(
-            value=str(self.timer.break_interval_minutes)
-        )
-        self.status_var = tk.StringVar()
-        self.time_caption_var = tk.StringVar()
-        self.time_var = tk.StringVar()
-        self.work_total_var = tk.StringVar()
-        self.break_total_var = tk.StringVar()
-        self.break_count_var = tk.StringVar()
-        self.water_total_var = tk.StringVar()
-        self.current_break_var = tk.StringVar()
-        self.last_break_var = tk.StringVar()
-
-        self._configure_window()
+        self.window = QMainWindow()
+        self.window.setWindowTitle("健康工作小工具")
+        self.window.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
+        self.window.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
+        self._apply_styles()
         self._build_widgets()
+        self._position_bottom_right()
+
+        self.qt_timer = QTimer(self.window)
+        self.qt_timer.setInterval(TICK_INTERVAL_MS)
+        self.qt_timer.timeout.connect(self._on_tick)
+
         self._render(self.timer.snapshot())
-        self._schedule_tick()
-        self.root.after_idle(self._show_startup_storage_message)
+        QTimer.singleShot(0, self._show_startup_storage_message)
 
     def run(self) -> None:
-        self.root.mainloop()
+        self.window.show()
+        self.qt_timer.start()
+        self.app.exec_()
 
     def _load_today_data(self) -> tuple[list[BreakRecord], int]:
         try:
@@ -92,8 +160,8 @@ class MainWindow:
             work_minutes = self.storage.get_work_minutes(self.today)
         except (StorageError, ValueError) as exc:
             self._startup_storage_message = (
-                "讀取今日資料時發生問題，已先用 0 初始化畫面。"
-                f"\n原因：{exc}"
+                "讀取今日資料時發生問題，已先用 0 初始化畫面。\n"
+                f"原因：{exc}"
             )
             return [], 0
 
@@ -107,109 +175,249 @@ class MainWindow:
         if not self._startup_storage_message:
             return
 
-        messagebox.showwarning(
+        QMessageBox.warning(
+            self.window,
             "資料讀取提醒",
             self._startup_storage_message,
-            parent=self.root,
         )
         self._startup_storage_message = None
 
-    def _configure_window(self) -> None:
-        self.root.title("健康工作小工具")
-        self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
-        self.root.resizable(False, False)
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-
-        style = ttk.Style(self.root)
-        if "clam" in style.theme_names():
-            style.theme_use("clam")
-        style.configure("Title.TLabel", font=("Microsoft JhengHei UI", 12, "bold"))
-        style.configure("Timer.TLabel", font=("Consolas", 28, "bold"))
-        style.configure("Status.TLabel", foreground="#2f5d50")
-
-        self.root.update_idletasks()
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-        x = max(0, screen_width - WINDOW_WIDTH - WINDOW_MARGIN_X)
-        y = max(0, screen_height - WINDOW_HEIGHT - WINDOW_MARGIN_Y)
-        self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+{x}+{y}")
+    def _apply_styles(self) -> None:
+        self.window.setStyleSheet(
+            """
+            QMainWindow {
+                background: #fff7fb;
+            }
+            QWidget {
+                font-family: "Microsoft JhengHei UI", "Microsoft JhengHei", "Yu Gothic UI", "Segoe UI";
+                font-size: 13px;
+            }
+            QWidget#Root {
+                background: #fff7fb;
+            }
+            QScrollArea#MainScroll {
+                background: #fff7fb;
+                border: 0;
+            }
+            QScrollBar:vertical {
+                background: #fff7fb;
+                width: 9px;
+                margin: 4px 0 4px 0;
+            }
+            QScrollBar::handle:vertical {
+                background: #ead2df;
+                border-radius: 4px;
+                min-height: 28px;
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0;
+            }
+            QFrame#Card {
+                background: #ffffff;
+                border: 1px solid #f0d9e7;
+                border-radius: 14px;
+            }
+            QFrame#TimerCard {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #ffffff, stop:1 #ecfeff);
+                border: 1px solid #c7eef2;
+                border-radius: 16px;
+            }
+            QLabel#Title {
+                color: #2f2533;
+                font-size: 22px;
+                font-weight: 800;
+            }
+            QLabel#Subtitle {
+                color: #7c6d80;
+                font-size: 11px;
+            }
+            QLabel#SectionTitle {
+                color: #8a5c75;
+                font-size: 13px;
+                font-weight: 700;
+            }
+            QLabel#TimerCaption {
+                color: #7c6d80;
+                font-size: 13px;
+                font-weight: 700;
+            }
+            QLabel#TimerText {
+                color: #263238;
+                font-family: "Segoe UI", "Microsoft JhengHei UI", "Yu Gothic UI";
+                font-size: 42px;
+                font-weight: 900;
+            }
+            QLabel#StatusPill {
+                border-radius: 13px;
+                padding: 5px 14px;
+                font-size: 13px;
+                font-weight: 700;
+            }
+            QLabel#StatLabel {
+                color: #8a5c75;
+                font-size: 12px;
+                font-weight: 700;
+            }
+            QLabel#StatValue {
+                color: #2f2533;
+                font-size: 15px;
+                font-weight: 800;
+            }
+            QLineEdit {
+                background: #ffffff;
+                border: 1px solid #e6cadb;
+                border-radius: 10px;
+                min-height: 30px;
+                padding: 5px 10px;
+                color: #2f2533;
+                font-size: 13px;
+            }
+            QTextEdit {
+                background: #ffffff;
+                border: 1px solid #e6cadb;
+                border-radius: 12px;
+                padding: 10px;
+                color: #2f2533;
+                font-size: 13px;
+            }
+            QPushButton {
+                background: #ffffff;
+                border: 1px solid #e7cadb;
+                border-radius: 12px;
+                min-height: 34px;
+                padding: 7px 10px;
+                color: #3b2f3f;
+                font-size: 11px;
+                font-weight: 700;
+            }
+            QPushButton:hover {
+                background: #fff1f7;
+                border-color: #f3a8c7;
+            }
+            QPushButton:disabled {
+                color: #b3aab7;
+                background: #f7f3f6;
+                border-color: #eee4eb;
+            }
+            QPushButton#PrimaryButton {
+                color: #ffffff;
+                background: #ec6f9f;
+                border-color: #ec6f9f;
+            }
+            QPushButton#PrimaryButton:hover {
+                background: #df5d91;
+                border-color: #df5d91;
+            }
+            QPushButton#EndButton {
+                color: #ffffff;
+                background: #6aa6a1;
+                border-color: #6aa6a1;
+            }
+            QPushButton#EndButton:hover {
+                background: #57948f;
+                border-color: #57948f;
+            }
+            """
+        )
 
     def _build_widgets(self) -> None:
-        container = ttk.Frame(self.root, padding=14)
-        container.pack(fill=tk.BOTH, expand=True)
+        root = QWidget()
+        root.setObjectName("Root")
+        self.window.setCentralWidget(root)
 
-        ttk.Label(container, text="健康工作小工具", style="Title.TLabel").pack(
-            anchor=tk.W
-        )
+        root_layout = QVBoxLayout(root)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
 
-        interval_row = ttk.Frame(container)
-        interval_row.pack(fill=tk.X, pady=(14, 8))
-        ttk.Label(interval_row, text="休息間隔").pack(side=tk.LEFT)
-        ttk.Entry(
-            interval_row,
-            textvariable=self.interval_var,
-            width=7,
-            justify=tk.RIGHT,
-        ).pack(side=tk.LEFT, padx=(8, 4))
-        ttk.Label(interval_row, text="分鐘").pack(side=tk.LEFT)
+        scroll_area = QScrollArea()
+        scroll_area.setObjectName("MainScroll")
+        scroll_area.setFrameShape(QFrame.NoFrame)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        root_layout.addWidget(scroll_area)
 
-        timer_panel = ttk.Frame(container, padding=(0, 8))
-        timer_panel.pack(fill=tk.X)
-        ttk.Label(timer_panel, textvariable=self.time_caption_var).pack(anchor=tk.W)
-        ttk.Label(timer_panel, textvariable=self.time_var, style="Timer.TLabel").pack(
-            anchor=tk.CENTER,
-            pady=(2, 4),
-        )
-        ttk.Label(
-            timer_panel,
-            textvariable=self.status_var,
-            style="Status.TLabel",
-        ).pack(anchor=tk.CENTER)
+        content = QWidget()
+        content.setObjectName("Root")
+        scroll_area.setWidget(content)
 
-        controls = ttk.Frame(container)
-        controls.pack(fill=tk.X, pady=(12, 4))
-        controls.columnconfigure((0, 1), weight=1, uniform="controls")
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
 
-        self.start_button = ttk.Button(
-            controls,
-            text="開始工作",
-            command=self._on_start_work,
-        )
-        self.pause_button = ttk.Button(
-            controls,
-            text="暫停",
-            command=lambda: self._run_timer_action(self.timer.pause),
-        )
-        self.resume_button = ttk.Button(
-            controls,
-            text="繼續",
-            command=lambda: self._run_timer_action(self.timer.resume_work),
-        )
-        self.restart_button = ttk.Button(
-            controls,
-            text="重新開始",
-            command=self._on_restart_countdown,
-        )
-        self.snooze_button = ttk.Button(
-            controls,
-            text="延後 5 分鐘",
-            command=lambda: self._run_timer_action(self.timer.snooze),
-        )
-        self.start_break_button = ttk.Button(
-            controls,
-            text="開始休息",
-            command=lambda: self._run_timer_action(self.timer.start_break),
-        )
-        self.return_work_button = ttk.Button(
-            controls,
-            text="回到工作",
-            command=self._on_return_to_work,
-        )
-        self.end_day_button = ttk.Button(
-            controls,
-            text="結束今天",
-            command=self._on_end_day,
-        )
+        title = QLabel("健康工作小工具")
+        title.setObjectName("Title")
+        subtitle = QLabel("小小提醒你休息、喝水、照顧眼睛")
+        subtitle.setObjectName("Subtitle")
+        subtitle.setWordWrap(True)
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+
+        settings_card = self._make_card()
+        settings_layout = QHBoxLayout(settings_card)
+        settings_card.setMinimumHeight(58)
+        settings_layout.setContentsMargins(14, 10, 14, 10)
+        settings_layout.setSpacing(10)
+        settings_label = QLabel("每")
+        self.interval_input = QLineEdit(str(self.timer.break_interval_minutes))
+        self.interval_input.setValidator(QIntValidator(1, 999, self.interval_input))
+        self.interval_input.setAlignment(Qt.AlignRight)
+        self.interval_input.setFixedWidth(82)
+        settings_tail = QLabel("分鐘提醒休息")
+        settings_tail.setWordWrap(True)
+        settings_layout.addWidget(settings_label)
+        settings_layout.addWidget(self.interval_input)
+        settings_layout.addWidget(settings_tail)
+        settings_layout.addStretch()
+        layout.addWidget(settings_card)
+
+        timer_card = QFrame()
+        timer_card.setObjectName("TimerCard")
+        timer_card.setMinimumHeight(150)
+        timer_layout = QVBoxLayout(timer_card)
+        timer_layout.setContentsMargins(20, 16, 20, 16)
+        timer_layout.setSpacing(7)
+        self.time_caption_label = QLabel()
+        self.time_caption_label.setObjectName("TimerCaption")
+        self.time_caption_label.setAlignment(Qt.AlignCenter)
+        self.time_label = QLabel()
+        self.time_label.setObjectName("TimerText")
+        self.time_label.setAlignment(Qt.AlignCenter)
+        self.time_label.setMinimumHeight(72)
+        self.status_label = QLabel()
+        self.status_label.setObjectName("StatusPill")
+        self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setFixedHeight(34)
+        timer_layout.addWidget(self.time_caption_label)
+        timer_layout.addWidget(self.time_label)
+        timer_layout.addWidget(self.status_label, alignment=Qt.AlignCenter)
+        layout.addWidget(timer_card)
+
+        control_card = self._make_card()
+        control_layout = QGridLayout(control_card)
+        control_layout.setContentsMargins(12, 12, 12, 12)
+        control_layout.setHorizontalSpacing(10)
+        control_layout.setVerticalSpacing(9)
+
+        self.start_button = QPushButton("開始工作")
+        self.start_button.setObjectName("PrimaryButton")
+        self.start_button.clicked.connect(self._on_start_work)
+        self.pause_button = QPushButton("暫停")
+        self.pause_button.clicked.connect(lambda: self._run_timer_action(self.timer.pause))
+        self.resume_button = QPushButton("繼續")
+        self.resume_button.clicked.connect(lambda: self._run_timer_action(self.timer.resume_work))
+        self.restart_button = QPushButton("重新開始")
+        self.restart_button.clicked.connect(self._on_restart_countdown)
+        self.snooze_button = QPushButton("延後 5 分鐘")
+        self.snooze_button.clicked.connect(lambda: self._run_timer_action(self.timer.snooze))
+        self.start_break_button = QPushButton("立即休息")
+        self.start_break_button.clicked.connect(self._on_start_break)
+        self.return_work_button = QPushButton("回到工作")
+        self.return_work_button.clicked.connect(self._on_return_to_work)
+        self.end_day_button = QPushButton("結束今天")
+        self.end_day_button.setObjectName("EndButton")
+        self.end_day_button.clicked.connect(self._on_end_day)
 
         buttons = [
             self.start_button,
@@ -222,47 +430,67 @@ class MainWindow:
             self.end_day_button,
         ]
         for index, button in enumerate(buttons):
-            button.grid(
-                row=index // 2,
-                column=index % 2,
-                sticky=tk.EW,
-                padx=4,
-                pady=4,
-            )
+            button.setMinimumHeight(36)
+            control_layout.addWidget(button, index // 2, index % 2)
+        control_layout.setColumnStretch(0, 1)
+        control_layout.setColumnStretch(1, 1)
+        layout.addWidget(control_card)
 
-        stats_frame = ttk.LabelFrame(container, text="今日統計", padding=10)
-        stats_frame.pack(fill=tk.X, pady=(14, 0))
+        stats_title = QLabel("今日統計")
+        stats_title.setObjectName("SectionTitle")
+        layout.addWidget(stats_title)
 
-        self._add_stat_row(stats_frame, "工作總時間", self.work_total_var, 0)
-        self._add_stat_row(stats_frame, "休息總時間", self.break_total_var, 1)
-        self._add_stat_row(stats_frame, "休息次數", self.break_count_var, 2)
-        self._add_stat_row(stats_frame, "喝水總量", self.water_total_var, 3)
-        self._add_stat_row(stats_frame, "目前休息", self.current_break_var, 4)
-        self._add_stat_row(stats_frame, "上次休息", self.last_break_var, 5)
+        stats_grid = QGridLayout()
+        stats_grid.setHorizontalSpacing(9)
+        stats_grid.setVerticalSpacing(9)
+        self.work_total_value = self._add_stat_card(stats_grid, "工作總時間", 0, 0)
+        self.break_total_value = self._add_stat_card(stats_grid, "休息總時間", 0, 1)
+        self.break_count_value = self._add_stat_card(stats_grid, "休息次數", 1, 0)
+        self.water_total_value = self._add_stat_card(stats_grid, "喝水總量", 1, 1)
+        self.current_break_value = self._add_stat_card(stats_grid, "目前休息", 2, 0)
+        self.last_break_value = self._add_stat_card(stats_grid, "上次休息", 2, 1)
+        for column in range(2):
+            stats_grid.setColumnStretch(column, 1)
+        layout.addLayout(stats_grid)
+        layout.addStretch()
 
-    def _add_stat_row(
+    def _make_card(self) -> QFrame:
+        card = QFrame()
+        card.setObjectName("Card")
+        return card
+
+    def _add_stat_card(
         self,
-        parent: ttk.Frame,
+        parent_layout: QGridLayout,
         label: str,
-        value_var: tk.StringVar,
         row: int,
-    ) -> None:
-        parent.columnconfigure(1, weight=1)
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky=tk.W, pady=2)
-        ttk.Label(parent, textvariable=value_var).grid(
-            row=row,
-            column=1,
-            sticky=tk.E,
-            pady=2,
-        )
+        column: int,
+    ) -> QLabel:
+        card = self._make_card()
+        card.setMinimumHeight(70)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(11, 9, 11, 9)
+        card_layout.setSpacing(5)
+        label_widget = QLabel(label)
+        label_widget.setObjectName("StatLabel")
+        value_widget = QLabel("0 分鐘")
+        value_widget.setObjectName("StatValue")
+        label_widget.setWordWrap(True)
+        value_widget.setWordWrap(True)
+        card_layout.addWidget(label_widget)
+        card_layout.addWidget(value_widget)
+        parent_layout.addWidget(card, row, column)
+        return value_widget
 
-    def _schedule_tick(self) -> None:
-        self._after_id = self.root.after(TICK_INTERVAL_MS, self._on_tick)
+    def _position_bottom_right(self) -> None:
+        screen = self.app.primaryScreen().availableGeometry()
+        x = max(0, screen.right() - WINDOW_WIDTH - WINDOW_MARGIN_X)
+        y = max(0, screen.bottom() - WINDOW_HEIGHT - WINDOW_MARGIN_Y)
+        self.window.move(x, y)
 
     def _on_tick(self) -> None:
         snapshot = self.timer.tick(1)
         self._render(snapshot)
-        self._schedule_tick()
 
     def _on_start_work(self) -> None:
         interval_minutes = self._read_interval_minutes()
@@ -282,41 +510,45 @@ class MainWindow:
         try:
             completed_break = self.timer.return_to_work(auto_start_next_round=False)
         except TimerStateError as exc:
-            messagebox.showwarning("無法執行", str(exc), parent=self.root)
+            QMessageBox.warning(self.window, "無法執行", str(exc))
             return
 
         self._pending_break = completed_break
         self._render(self.timer.snapshot())
         self._show_break_record_dialog()
 
+    def _on_start_break(self) -> None:
+        snapshot = self.timer.snapshot()
+        if snapshot.state == TimerState.REMINDER:
+            self._run_timer_action(self.timer.start_break)
+            return
+
+        self._run_timer_action(self.timer.start_break_early)
+
     def _run_timer_action(self, action: Callable[[], object]) -> None:
         try:
             action()
         except (TimerStateError, ValueError) as exc:
-            messagebox.showwarning("無法執行", str(exc), parent=self.root)
+            QMessageBox.warning(self.window, "無法執行", str(exc))
         self._render(self.timer.snapshot())
 
     def _on_end_day(self) -> None:
         snapshot = self.timer.snapshot()
         if snapshot.state == TimerState.BREAKING:
-            messagebox.showinfo(
+            QMessageBox.information(
+                self.window,
                 "尚在休息中",
                 "請先按「回到工作」並儲存休息紀錄，再結束今天。",
-                parent=self.root,
             )
             return
 
         if self._pending_break is not None:
-            messagebox.showinfo(
+            QMessageBox.information(
+                self.window,
                 "休息紀錄尚未儲存",
                 "請先儲存目前的休息紀錄，再結束今天。",
-                parent=self.root,
             )
             self._show_break_record_dialog()
-            return
-
-        if self._break_dialog is not None and self._break_dialog.winfo_exists():
-            self._break_dialog.lift()
             return
 
         try:
@@ -330,159 +562,52 @@ class MainWindow:
             self.storage.save_daily_summary(summary)
             self.timer.end_day()
         except (StorageError, TimerStateError, ValueError) as exc:
-            messagebox.showerror("結束今天失敗", str(exc), parent=self.root)
+            QMessageBox.critical(self.window, "結束今天失敗", str(exc))
             return
 
         self._render(self.timer.snapshot())
-        ReportDialog(self.root, summary).show()
+        ReportDialog(self.window, summary).show()
 
     def _show_break_record_dialog(self) -> None:
         if self._pending_break is None:
             return
-        if self._break_dialog is not None and self._break_dialog.winfo_exists():
-            self._break_dialog.lift()
+
+        dialog = BreakRecordDialog(self.window, self._pending_break)
+        if dialog.exec_() != QDialog.Accepted:
             return
 
-        dialog = tk.Toplevel(self.root)
-        self._break_dialog = dialog
-        dialog.title("休息紀錄")
-        dialog.resizable(False, False)
-        dialog.transient(self.root)
-        dialog.grab_set()
-
-        body = ttk.Frame(dialog, padding=14)
-        body.pack(fill=tk.BOTH, expand=True)
-
-        ttk.Label(body, text="休息結束，請記錄這次休息。").pack(anchor=tk.W)
-        ttk.Label(
-            body,
-            text=f"本次休息：{self._pending_break.duration_minutes} 分鐘",
-        ).pack(anchor=tk.W, pady=(4, 12))
-
-        water_var = tk.StringVar(value="0")
-        water_row = ttk.Frame(body)
-        water_row.pack(fill=tk.X, pady=(0, 8))
-        ttk.Label(water_row, text="喝水量").pack(side=tk.LEFT)
-        water_entry = ttk.Entry(
-            water_row,
-            textvariable=water_var,
-            width=10,
-            justify=tk.RIGHT,
+        break_record = self._build_break_record(
+            water_ml=dialog.water_ml,
+            note=dialog.note,
         )
-        water_entry.pack(side=tk.LEFT, padx=(8, 4))
-        ttk.Label(water_row, text="ml").pack(side=tk.LEFT)
-
-        ttk.Label(body, text="備註（可選）").pack(anchor=tk.W)
-        note_text = tk.Text(body, height=3, width=32, wrap=tk.WORD)
-        note_text.pack(fill=tk.X, pady=(4, 10))
-
-        save_button = ttk.Button(
-            body,
-            text="儲存休息紀錄",
-            command=lambda: self._save_break_record_from_dialog(
-                dialog=dialog,
-                water_value=water_var.get(),
-                note=note_text.get("1.0", tk.END).strip(),
-            ),
-        )
-        save_button.pack(fill=tk.X)
-
-        dialog.protocol("WM_DELETE_WINDOW", self._on_break_dialog_close_attempt)
-        self._position_break_dialog(dialog)
-        water_entry.focus_set()
-
-    def _position_break_dialog(self, dialog: tk.Toplevel) -> None:
-        self.root.update_idletasks()
-        root_x = self.root.winfo_x()
-        root_y = self.root.winfo_y()
-        root_width = self.root.winfo_width()
-        root_height = self.root.winfo_height()
-        x = root_x + max(0, (root_width - BREAK_DIALOG_WIDTH) // 2)
-        y = root_y + max(0, (root_height - BREAK_DIALOG_HEIGHT) // 2)
-        dialog.geometry(f"{BREAK_DIALOG_WIDTH}x{BREAK_DIALOG_HEIGHT}+{x}+{y}")
-
-    def _on_break_dialog_close_attempt(self) -> None:
-        messagebox.showinfo(
-            "請先儲存",
-            "請先儲存休息紀錄，再回到下一輪工作。",
-            parent=self._break_dialog or self.root,
-        )
-
-    def _save_break_record_from_dialog(
-        self,
-        dialog: tk.Toplevel,
-        water_value: str,
-        note: str,
-    ) -> None:
-        water_ml = self._parse_water_ml(water_value, parent=dialog)
-        if water_ml is None:
-            return
-
-        break_record = self._build_break_record(water_ml=water_ml, note=note)
 
         try:
             self.storage.add_break_record(break_record)
         except (StorageError, ValueError) as exc:
-            messagebox.showerror("儲存失敗", str(exc), parent=dialog)
+            QMessageBox.critical(self.window, "儲存失敗", str(exc))
             return
 
         self._session_break_records.append(break_record)
         self._pending_break = None
-        self._break_dialog = None
-        dialog.grab_release()
-        dialog.destroy()
         self._run_timer_action(self.timer.resume_work)
 
     def _read_interval_minutes(self) -> int | None:
-        raw_value = self.interval_var.get().strip()
+        raw_value = self.interval_input.text().strip()
         if not raw_value:
-            messagebox.showerror("輸入錯誤", "休息間隔不可空白。", parent=self.root)
+            QMessageBox.warning(self.window, "輸入錯誤", "休息間隔不可空白。")
             return None
 
         try:
             interval_minutes = int(raw_value)
         except ValueError:
-            messagebox.showerror(
-                "輸入錯誤",
-                "休息間隔必須是正整數。",
-                parent=self.root,
-            )
+            QMessageBox.warning(self.window, "輸入錯誤", "休息間隔必須是正整數。")
             return None
 
         if interval_minutes < 1:
-            messagebox.showerror(
-                "輸入錯誤",
-                "休息間隔不可小於 1 分鐘。",
-                parent=self.root,
-            )
+            QMessageBox.warning(self.window, "輸入錯誤", "休息間隔不可小於 1 分鐘。")
             return None
 
         return interval_minutes
-
-    def _parse_water_ml(self, raw_value: str, parent: tk.Misc) -> int | None:
-        cleaned_value = raw_value.strip()
-        if not cleaned_value:
-            return 0
-
-        try:
-            water_ml = int(cleaned_value)
-        except ValueError:
-            messagebox.showerror(
-                "輸入錯誤",
-                "喝水量必須是 0 或正整數。",
-                parent=parent,
-            )
-            return None
-
-        if water_ml < 0:
-            messagebox.showerror(
-                "輸入錯誤",
-                "喝水量不可小於 0。",
-                parent=parent,
-            )
-            return None
-
-        return water_ml
 
     def _build_break_record(self, water_ml: int, note: str) -> BreakRecord:
         completed_break = self._pending_break
@@ -499,21 +624,25 @@ class MainWindow:
 
     def _render(self, snapshot: TimerSnapshot) -> None:
         state = snapshot.state
-        self.status_var.set(f"狀態：{STATE_LABELS[state]}")
+        self.status_label.setText(STATE_LABELS[state])
+        foreground, background = STATE_COLORS[state]
+        self.status_label.setStyleSheet(
+            f"color: {foreground}; background: {background}; "
+            "border-radius: 15px; padding: 6px 16px; "
+            "font-size: 13px; font-weight: 700;"
+        )
 
         if state == TimerState.BREAKING:
-            self.time_caption_var.set("休息已進行")
-            self.time_var.set(_format_seconds(snapshot.break_elapsed_seconds))
+            self.time_caption_label.setText("休息已進行")
+            self.time_label.setText(_format_seconds(snapshot.break_elapsed_seconds))
         elif state == TimerState.REMINDER:
-            self.time_caption_var.set("提醒時間到")
-            self.time_var.set("00:00")
+            self.time_caption_label.setText("提醒時間到")
+            self.time_label.setText("00:00")
         else:
-            self.time_caption_var.set("剩餘倒數")
-            self.time_var.set(_format_seconds(snapshot.remaining_seconds))
+            self.time_caption_label.setText("剩餘倒數")
+            self.time_label.setText(_format_seconds(snapshot.remaining_seconds))
 
         self._render_statistics(snapshot)
-        self.current_break_var.set(_format_seconds(snapshot.break_elapsed_seconds))
-        self.last_break_var.set(_format_last_break(snapshot))
         self._update_button_states(state)
 
     def _render_statistics(self, snapshot: TimerSnapshot) -> None:
@@ -522,21 +651,20 @@ class MainWindow:
             work_minutes=snapshot.total_work_seconds // 60,
             break_records=self._session_break_records,
         )
-        self.work_total_var.set(_format_minutes(stats.work_minutes))
-        self.break_total_var.set(_format_minutes(stats.break_minutes))
-        self.break_count_var.set(f"{stats.break_count} 次")
-        self.water_total_var.set(f"{stats.water_ml} ml")
+        self.work_total_value.setText(_format_minutes(stats.work_minutes))
+        self.break_total_value.setText(_format_minutes(stats.break_minutes))
+        self.break_count_value.setText(f"{stats.break_count} 次")
+        self.water_total_value.setText(f"{stats.water_ml} ml")
+        self.current_break_value.setText(_format_seconds(snapshot.break_elapsed_seconds))
+        self.last_break_value.setText(_format_last_break(snapshot))
 
     def _update_button_states(self, state: TimerState) -> None:
         pending_break = self._pending_break is not None
-        self.start_button.state(["!disabled"] if state == TimerState.IDLE else ["disabled"])
-        self.pause_button.state(["!disabled"] if state == TimerState.WORKING else ["disabled"])
-        self.resume_button.state(
-            ["!disabled"] if state == TimerState.PAUSED and not pending_break else ["disabled"]
-        )
-        self.restart_button.state(
-            ["!disabled"]
-            if state
+        self.start_button.setEnabled(state == TimerState.IDLE)
+        self.pause_button.setEnabled(state == TimerState.WORKING)
+        self.resume_button.setEnabled(state == TimerState.PAUSED and not pending_break)
+        self.restart_button.setEnabled(
+            state
             in {
                 TimerState.IDLE,
                 TimerState.WORKING,
@@ -544,30 +672,131 @@ class MainWindow:
                 TimerState.REMINDER,
             }
             and not pending_break
-            else ["disabled"]
         )
-        self.snooze_button.state(
-            ["!disabled"] if state == TimerState.REMINDER else ["disabled"]
+        self.snooze_button.setEnabled(state == TimerState.REMINDER)
+        self.start_break_button.setEnabled(
+            state
+            in {
+                TimerState.WORKING,
+                TimerState.PAUSED,
+                TimerState.REMINDER,
+            }
+            and not pending_break
         )
-        self.start_break_button.state(
-            ["!disabled"] if state == TimerState.REMINDER else ["disabled"]
-        )
-        self.return_work_button.state(
-            ["!disabled"] if state == TimerState.BREAKING else ["disabled"]
-        )
-        self.end_day_button.state(
-            ["disabled"] if state == TimerState.DAY_ENDED else ["!disabled"]
+        self.return_work_button.setEnabled(state == TimerState.BREAKING)
+        self.end_day_button.setEnabled(state != TimerState.DAY_ENDED)
+
+
+class BreakRecordDialog(QDialog):
+    """Collect water intake and notes for a completed break."""
+
+    def __init__(self, parent: QWidget, completed_break: CompletedBreak) -> None:
+        super().__init__(parent)
+        self.completed_break = completed_break
+        self.water_ml = 0
+        self.note = ""
+
+        self.setWindowTitle("休息紀錄")
+        self.resize(BREAK_DIALOG_WIDTH, BREAK_DIALOG_HEIGHT)
+        self.setMinimumSize(340, 300)
+        self.setModal(True)
+        font_family = QApplication.instance().font().family()
+        self.setStyleSheet(
+            """
+            QDialog {
+                background: #fff7fb;
+                font-family: "__FONT_FAMILY__";
+                font-size: 13px;
+            }
+            QLabel {
+                color: #3b2f3f;
+                font-size: 13px;
+            }
+            QLabel#DialogTitle {
+                color: #2f2533;
+                font-size: 20px;
+                font-weight: 800;
+            }
+            QLabel#DialogHint {
+                color: #7c6d80;
+                font-size: 12px;
+            }
+            QLineEdit, QTextEdit {
+                background: #ffffff;
+                border: 1px solid #e6cadb;
+                border-radius: 12px;
+                min-height: 34px;
+                padding: 8px 10px;
+                color: #2f2533;
+                font-size: 13px;
+            }
+            QPushButton {
+                color: #ffffff;
+                background: #ec6f9f;
+                border: 1px solid #ec6f9f;
+                border-radius: 14px;
+                min-height: 40px;
+                padding: 8px 12px;
+                font-size: 13px;
+                font-weight: 700;
+            }
+            QPushButton:hover { background: #df5d91; }
+            """
+            .replace("__FONT_FAMILY__", font_family)
         )
 
-    def _on_close(self) -> None:
-        if self._break_dialog is not None and self._break_dialog.winfo_exists():
-            self._break_dialog.grab_release()
-            self._break_dialog.destroy()
-            self._break_dialog = None
-        if self._after_id is not None:
-            self.root.after_cancel(self._after_id)
-            self._after_id = None
-        self.root.destroy()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
+
+        title = QLabel("休息紀錄")
+        title.setObjectName("DialogTitle")
+        hint = QLabel(f"本次休息：{completed_break.duration_minutes} 分鐘")
+        hint.setObjectName("DialogHint")
+        layout.addWidget(title)
+        layout.addWidget(hint)
+
+        water_row = QHBoxLayout()
+        water_row.addWidget(QLabel("喝水量"))
+        self.water_input = QLineEdit("0")
+        self.water_input.setValidator(QIntValidator(0, 99999, self.water_input))
+        self.water_input.setAlignment(Qt.AlignRight)
+        water_row.addWidget(self.water_input)
+        water_row.addWidget(QLabel("ml"))
+        layout.addLayout(water_row)
+
+        layout.addWidget(QLabel("備註（可選）"))
+        self.note_input = QTextEdit()
+        self.note_input.setFixedHeight(96)
+        layout.addWidget(self.note_input)
+
+        save_button = QPushButton("儲存休息紀錄")
+        save_button.clicked.connect(self._accept_record)
+        layout.addWidget(save_button)
+        self.water_input.setFocus()
+
+    def closeEvent(self, event) -> None:  # type: ignore[override]
+        QMessageBox.information(self, "請先儲存", "請先儲存休息紀錄，再回到下一輪工作。")
+        event.ignore()
+
+    def _accept_record(self) -> None:
+        raw_water = self.water_input.text().strip()
+        if not raw_water:
+            raw_water = "0"
+
+        try:
+            water_ml = int(raw_water)
+        except ValueError:
+            QMessageBox.warning(self, "輸入錯誤", "喝水量必須是 0 或正整數。")
+            return
+
+        if water_ml < 0:
+            QMessageBox.warning(self, "輸入錯誤", "喝水量不可小於 0。")
+            return
+
+        self.water_ml = water_ml
+        self.note = self.note_input.toPlainText().strip()
+        self.accept()
 
 
 def _format_seconds(seconds: int) -> str:

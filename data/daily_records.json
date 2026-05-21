@@ -2,25 +2,71 @@
   "settings": {
     "break_interval_minutes": 30
   },
-  "break_records": [],
+  "break_records": [
+    {
+      "id": "8759e395-2f11-42a9-9f15-cd3cf08c0aba",
+      "date": "2026-05-20",
+      "start_time": "2026-05-20T17:08:36",
+      "end_time": "2026-05-20T17:08:39",
+      "duration_minutes": 1,
+      "water_ml": 20,
+      "note": ""
+    },
+    {
+      "id": "6bc6114f-7dd5-49eb-9a6f-c834f24768e8",
+      "date": "2026-05-20",
+      "start_time": "2026-05-20T17:15:09",
+      "end_time": "2026-05-20T17:15:28",
+      "duration_minutes": 1,
+      "water_ml": 50,
+      "note": ""
+    },
+    {
+      "id": "a1f8859e-b485-406b-9181-a2221a011b20",
+      "date": "2026-05-21",
+      "start_time": "2026-05-21T09:09:08",
+      "end_time": "2026-05-21T09:09:12",
+      "duration_minutes": 1,
+      "water_ml": 10,
+      "note": ""
+    }
+  ],
   "daily_summaries": [
     {
       "date": "2026-05-20",
-      "work_minutes": 0,
-      "break_minutes": 0,
-      "break_count": 0,
-      "water_ml": 0,
-      "average_work_session_minutes": null,
-      "health_score": 10,
+      "work_minutes": 1,
+      "break_minutes": 2,
+      "break_count": 2,
+      "water_ml": 70,
+      "average_work_session_minutes": 0.5,
+      "health_score": 45,
       "suggestions": [
-        "今天還沒有休息紀錄，建議安排短休息。",
+        "建議增加休息次數，讓工作節奏更穩定。",
         "今天喝水量偏低，建議增加喝水量。",
+        "今天平均工作時段控制得不錯。",
         "今天休息時間偏少，建議增加短暫走動與眼睛休息。"
       ],
-      "created_at": "2026-05-20T16:37:12"
+      "created_at": "2026-05-20T17:15:35"
+    },
+    {
+      "date": "2026-05-21",
+      "work_minutes": 0,
+      "break_minutes": 1,
+      "break_count": 1,
+      "water_ml": 10,
+      "average_work_session_minutes": 0.0,
+      "health_score": 45,
+      "suggestions": [
+        "建議增加休息次數，讓工作節奏更穩定。",
+        "今天喝水量偏低，建議增加喝水量。",
+        "今天平均工作時段控制得不錯。",
+        "今天休息時間偏少，建議增加短暫走動與眼睛休息。"
+      ],
+      "created_at": "2026-05-21T09:09:21"
     }
   ],
   "daily_work_minutes": {
-    "2026-05-20": 0
+    "2026-05-20": 1,
+    "2026-05-21": 0
   }
 }

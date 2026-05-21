@@ -2,12 +2,13 @@
 
 Windows desktop MVP for healthier work habits.
 
-This repository has the project skeleton, data layer, pure statistics/scoring logic, pure timer state machine, the Tkinter main window, break-record persistence, and the end-of-day report dialog. Reminder dialog polish will be added in later approved steps.
+This repository has the project skeleton, data layer, pure statistics/scoring logic, pure timer state machine, the PyQt5 main window, break-record persistence, and the end-of-day report dialog.
 
 ## Planned MVP
 
 - Rest reminder interval setting
 - Countdown timer with pause and restart
+- Early break from the working or paused state
 - Break reminder dialog
 - Automatic break timing
 - Break records with water intake and optional notes
@@ -19,20 +20,21 @@ This repository has the project skeleton, data layer, pure statistics/scoring lo
 ## Planned Tech Stack
 
 - Python
-- Tkinter
+- PyQt5
 - JSON file storage
-- Standard library only for the initial MVP
 
 ## Run The Current UI
 
 From the repository root:
 
 ```powershell
+pip install -r requirements.txt
 python -m app.main
 ```
 
 The current UI is connected to `WorkTimer`, can save completed break records to `data/daily_records.json`, and can generate/save an end-of-day `DailySummary`.
 On startup, the UI loads today's saved break records and work minutes once, initializes the timer as `Idle`, and displays today's totals immediately.
+The PyQt5 UI enables Windows high-DPI scaling, uses a rounded Windows font stack for readability, and keeps the main content in a resizable scrollable window.
 
 ## Data Storage
 

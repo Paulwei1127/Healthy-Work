@@ -194,7 +194,7 @@ class DailySummary:
 class AppSettings:
     """User-adjustable app settings."""
 
-    break_interval_minutes: int = 30
+    break_interval_minutes: int = 45
 
     def __post_init__(self) -> None:
         self.break_interval_minutes = _coerce_int(
@@ -209,7 +209,7 @@ class AppSettings:
             raise ValueError("AppSettings data must be a dictionary.")
 
         return cls(
-            break_interval_minutes=data.get("break_interval_minutes", 30),
+            break_interval_minutes=data.get("break_interval_minutes", 45),
         )
 
     def to_dict(self) -> dict[str, Any]:

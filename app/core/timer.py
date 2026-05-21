@@ -9,7 +9,7 @@ from math import ceil
 from typing import Callable
 
 
-DEFAULT_BREAK_INTERVAL_MINUTES = 30
+DEFAULT_BREAK_INTERVAL_MINUTES = 45
 SNOOZE_MINUTES = 5
 SECONDS_PER_MINUTE = 60
 
@@ -203,11 +203,25 @@ class WorkTimer:
 
     def start_break(self) -> TimerSnapshot:
         self._ensure_state({TimerState.REMINDER}, "start break")
+        self._begin_break()
+        return self.snapshot()
+
+    def start_break_early(self) -> TimerSnapshot:
+        self._ensure_state(
+            {
+                TimerState.WORKING,
+                TimerState.PAUSED,
+            },
+            "start break early",
+        )
+        self._begin_break()
+        return self.snapshot()
+
+    def _begin_break(self) -> None:
         self._break_start_time = self._now()
         self._break_elapsed_seconds = 0
         self._remaining_seconds = 0
         self._state = TimerState.BREAKING
-        return self.snapshot()
 
     def return_to_work(self, auto_start_next_round: bool = False) -> CompletedBreak:
         self._ensure_state({TimerState.BREAKING}, "return to work")

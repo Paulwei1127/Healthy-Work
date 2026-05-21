@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.py[cod]
+data/daily_records.json
+data/*.invalid-*.json
+artifacts/
