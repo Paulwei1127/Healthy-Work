@@ -1,6 +1,6 @@
 {
   "settings": {
-    "break_interval_minutes": 30
+    "break_interval_minutes": 1
   },
   "break_records": [
     {
@@ -74,6 +74,24 @@
       "duration_minutes": 1,
       "water_ml": 0,
       "note": ""
+    },
+    {
+      "id": "cd0b6787-108e-421b-92c4-6657d7dbbc11",
+      "date": "2026-05-21",
+      "start_time": "2026-05-21T09:56:30",
+      "end_time": "2026-05-21T09:56:36",
+      "duration_minutes": 1,
+      "water_ml": 0,
+      "note": ""
+    },
+    {
+      "id": "add97619-699b-4a0b-8fcd-d1aa7b5370e1",
+      "date": "2026-05-21",
+      "start_time": "2026-05-21T09:57:45",
+      "end_time": "2026-05-21T09:57:53",
+      "duration_minutes": 1,
+      "water_ml": 0,
+      "note": ""
     }
   ],
   "daily_summaries": [
@@ -95,11 +113,11 @@
     },
     {
       "date": "2026-05-21",
-      "work_minutes": 1,
-      "break_minutes": 7,
-      "break_count": 6,
+      "work_minutes": 2,
+      "break_minutes": 9,
+      "break_count": 8,
       "water_ml": 25,
-      "average_work_session_minutes": 0.17,
+      "average_work_session_minutes": 0.25,
       "health_score": 60,
       "suggestions": [
         "今天休息頻率良好。",
@@ -109,11 +127,11 @@
         "眼睛休息可以採用 20-20-20：每 20 分鐘看向遠方 20 秒。",
         "休息時建議伸展肩頸、起身走動，順手補充水分。"
       ],
-      "created_at": "2026-05-21T09:44:25"
+      "created_at": "2026-05-21T09:58:09"
     }
   ],
   "daily_work_minutes": {
     "2026-05-20": 1,
-    "2026-05-21": 1
+    "2026-05-21": 2
   }
 }

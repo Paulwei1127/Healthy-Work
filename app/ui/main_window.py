@@ -432,11 +432,11 @@ class MainWindow:
         self.pause_button = QPushButton("暫停")
         self.pause_button.clicked.connect(lambda: self._run_timer_action(self.timer.pause))
         self.resume_button = QPushButton("繼續")
-        self.resume_button.clicked.connect(lambda: self._run_timer_action(self.timer.resume_work))
+        self.resume_button.clicked.connect(self._on_resume_work)
         self.restart_button = QPushButton("重新開始")
         self.restart_button.clicked.connect(self._on_restart_countdown)
         self.snooze_button = QPushButton("延後 5 分鐘")
-        self.snooze_button.clicked.connect(lambda: self._run_timer_action(self.timer.snooze))
+        self.snooze_button.clicked.connect(self._on_snooze)
         self.start_break_button = QPushButton("立即休息")
         self.start_break_button.clicked.connect(self._on_start_break)
         self.return_work_button = QPushButton("回到工作")
@@ -582,6 +582,20 @@ class MainWindow:
         except (StorageError, ValueError) as exc:
             QMessageBox.warning(self.window, "設定保存失敗", str(exc))
 
+    def _apply_interval_setting(self) -> int | None:
+        interval_minutes = self._read_interval_minutes()
+        if interval_minutes is None:
+            return None
+
+        try:
+            self.timer.set_break_interval(interval_minutes)
+        except (TimerStateError, ValueError) as exc:
+            QMessageBox.warning(self.window, "無法套用休息間隔", str(exc))
+            return None
+
+        self._save_current_settings(interval_minutes)
+        return interval_minutes
+
     def _on_window_close(self, event) -> None:  # type: ignore[no-untyped-def]
         self._save_work_minutes_if_needed(force=True, show_errors=True)
         event.accept()
@@ -629,6 +643,18 @@ class MainWindow:
         if self._run_timer_action(lambda: self.timer.restart_countdown(interval_minutes)):
             self._save_current_settings(interval_minutes)
 
+    def _on_resume_work(self) -> bool:
+        if self._apply_interval_setting() is None:
+            return False
+
+        return self._run_timer_action(self.timer.resume_work)
+
+    def _on_snooze(self) -> None:
+        if self._apply_interval_setting() is None:
+            return
+
+        self._run_timer_action(self.timer.snooze)
+
     def _on_return_to_work(self) -> None:
         try:
             completed_break = self.timer.return_to_work(auto_start_next_round=False)
@@ -642,6 +668,12 @@ class MainWindow:
 
     def _on_start_break(self) -> None:
         snapshot = self.timer.snapshot()
+        if snapshot.state in {TimerState.PAUSED, TimerState.REMINDER}:
+            if self._apply_interval_setting() is None:
+                return
+
+            snapshot = self.timer.snapshot()
+
         if snapshot.state == TimerState.REMINDER:
             self._run_timer_action(self.timer.start_break)
             return
@@ -682,15 +714,11 @@ class MainWindow:
             return
 
         if action == ReminderAction.START_BREAK:
-            self._run_timer_action(self.timer.start_break)
+            self._on_start_break()
         elif action == ReminderAction.SNOOZE:
-            self._run_timer_action(self.timer.snooze)
+            self._on_snooze()
         elif action == ReminderAction.RESTART:
-            self._run_timer_action(
-                lambda: self.timer.restart_countdown(
-                    self.timer.break_interval_minutes
-                )
-            )
+            self._on_restart_countdown()
 
     def _run_timer_action(self, action: Callable[[], object]) -> bool:
         try:
@@ -774,7 +802,7 @@ class MainWindow:
             return True
 
         if resume_after_save:
-            self._run_timer_action(self.timer.resume_work)
+            self._on_resume_work()
         else:
             self._render(self.timer.snapshot())
         return True
@@ -851,6 +879,19 @@ class MainWindow:
 
     def _update_button_states(self, state: TimerState) -> None:
         pending_break = self._pending_break is not None
+        interval_locked = state == TimerState.WORKING
+        self.interval_input.setReadOnly(interval_locked)
+        if interval_locked:
+            self.interval_input.setToolTip(
+                "工作倒數期間不可修改；暫停或休息時可設定下一輪時間。"
+            )
+            self.interval_input.setStyleSheet(
+                "background: #f7f3f6; color: #7c6d80; border-color: #eee4eb;"
+            )
+        else:
+            self.interval_input.setToolTip("設定下一輪工作倒數的休息提醒間隔。")
+            self.interval_input.setStyleSheet("")
+
         self.start_button.setEnabled(state in {TimerState.IDLE, TimerState.DAY_ENDED})
         self.pause_button.setEnabled(state == TimerState.WORKING)
         self.resume_button.setEnabled(state == TimerState.PAUSED and not pending_break)

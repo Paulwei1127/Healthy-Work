@@ -122,6 +122,8 @@ class WorkTimer:
             {
                 TimerState.IDLE,
                 TimerState.PAUSED,
+                TimerState.REMINDER,
+                TimerState.BREAKING,
                 TimerState.DAY_ENDED,
             },
             "set break interval",

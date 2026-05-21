@@ -150,6 +150,10 @@ class ReminderDialog(QDialog):
         self.action = action
         self.accept()
 
+    def reject(self) -> None:  # type: ignore[override]
+        self.action = ReminderAction.SNOOZE
+        super().accept()
+
     def _raise_and_focus(self) -> None:
         self.show()
         self.raise_()

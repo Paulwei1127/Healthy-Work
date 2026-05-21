@@ -3,11 +3,14 @@ from datetime import date
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PyQt5.QtWidgets import QDialog
+
 from app.data.models import BreakRecord
 from app.core.timer import TimerState
 from app.data.storage import JsonStorage
 import app.ui.main_window as main_window_module
 from app.ui.main_window import MainWindow
+from app.ui.reminder_dialog import ReminderAction, ReminderDialog
 
 
 def test_reminder_dialog_is_triggered_once_per_reminder_round(tmp_path) -> None:
@@ -59,6 +62,80 @@ def test_settings_are_saved_when_work_starts(tmp_path) -> None:
     window.window.close()
 
 
+def test_interval_input_is_read_only_while_working(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    assert not window.interval_input.isReadOnly()
+
+    window._on_start_work()
+
+    assert window.interval_input.isReadOnly()
+    assert "工作倒數期間不可修改" in window.interval_input.toolTip()
+
+    window._run_timer_action(window.timer.pause)
+
+    assert not window.interval_input.isReadOnly()
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_breaking_interval_change_applies_to_next_work_round(tmp_path, monkeypatch) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    class FakeBreakRecordDialog:
+        def __init__(self, parent, completed_break) -> None:
+            self.water_ml = 250
+            self.note = "伸展一下"
+
+        def exec_(self) -> int:
+            return QDialog.Accepted
+
+    monkeypatch.setattr(
+        main_window_module,
+        "BreakRecordDialog",
+        FakeBreakRecordDialog,
+    )
+
+    window._on_start_work()
+    window._on_start_break()
+    assert window.timer.snapshot().state == TimerState.BREAKING
+    assert not window.interval_input.isReadOnly()
+
+    window.interval_input.setText("30")
+    window.timer.tick(120)
+    window._on_return_to_work()
+
+    snapshot = window.timer.snapshot()
+    assert snapshot.state == TimerState.WORKING
+    assert snapshot.break_interval_minutes == 30
+    assert snapshot.remaining_seconds == 30 * 60
+    assert storage.load_settings().break_interval_minutes == 30
+    assert storage.list_break_records(window.today)[0].water_ml == 250
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_paused_interval_change_is_saved_and_applied_on_resume(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    window._on_start_work()
+    window._run_timer_action(window.timer.pause)
+    window.interval_input.setText("35")
+
+    assert window._on_resume_work() is True
+
+    snapshot = window.timer.snapshot()
+    assert snapshot.state == TimerState.WORKING
+    assert snapshot.break_interval_minutes == 35
+    assert snapshot.remaining_seconds == 35 * 60
+    assert storage.load_settings().break_interval_minutes == 35
+    window.qt_timer.stop()
+    window.window.close()
+
+
 def test_date_rollover_saves_old_day_and_loads_new_day(tmp_path) -> None:
     current_date = date(2026, 5, 20)
     storage = JsonStorage(tmp_path / "daily_records.json")
@@ -100,6 +177,46 @@ def test_start_work_reopens_today_after_end_day(tmp_path) -> None:
     assert snapshot.state == TimerState.WORKING
     assert snapshot.break_interval_minutes == 25
     assert snapshot.total_work_seconds == 30
+    assert storage.load_settings().break_interval_minutes == 25
+    assert window.interval_input.isReadOnly()
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_invalid_interval_does_not_save_or_change_paused_state(tmp_path, monkeypatch) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        main_window_module.QMessageBox,
+        "warning",
+        lambda *args, **kwargs: warnings.append(str(args[2])),
+    )
+
+    window._on_start_work()
+    window._run_timer_action(window.timer.pause)
+    window.interval_input.setText("0")
+
+    assert window._on_resume_work() is False
+
+    snapshot = window.timer.snapshot()
+    assert snapshot.state == TimerState.PAUSED
+    assert snapshot.break_interval_minutes == 45
+    assert storage.load_settings().break_interval_minutes == 45
+    assert warnings
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_reminder_dialog_close_defaults_to_snooze(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    dialog = ReminderDialog(window.window)
+
+    dialog.reject()
+
+    assert dialog.action == ReminderAction.SNOOZE
+    assert dialog.result() == QDialog.Accepted
     window.qt_timer.stop()
     window.window.close()
 
