@@ -36,7 +36,8 @@ python -m app.main
 The current UI is connected to `WorkTimer`, can save completed break records to `data/daily_records.json`, and can generate/save an end-of-day `DailySummary`.
 On startup, the UI loads today's saved break records and work minutes once, initializes the timer as `Idle`, and displays today's totals immediately.
 The PyQt5 UI enables Windows high-DPI scaling, uses a rounded Windows font stack for readability, and keeps the main content in a resizable scrollable window.
-Work minutes are saved periodically, settings are saved when the interval is changed, and the app checks for date rollover while running.
+Work minutes are saved periodically, and the app checks for date rollover while running.
+Rest interval settings are editable outside the active `Working` countdown and are saved when the input edit is finished. Invalid interval input is rejected and restored to the last valid value.
 
 ## Test
 

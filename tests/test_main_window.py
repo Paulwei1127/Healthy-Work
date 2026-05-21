@@ -80,6 +80,47 @@ def test_interval_input_is_read_only_while_working(tmp_path) -> None:
     window.window.close()
 
 
+def test_editing_finished_valid_interval_saves_settings(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    window.interval_input.setText("50")
+    window.interval_input.editingFinished.emit()
+
+    assert storage.load_settings().break_interval_minutes == 50
+    assert window.timer.snapshot().break_interval_minutes == 50
+    assert window.timer.snapshot().remaining_seconds == 50 * 60
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_editing_finished_invalid_interval_restores_previous_valid_value(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        main_window_module.QMessageBox,
+        "warning",
+        lambda *args, **kwargs: warnings.append(str(args[2])),
+    )
+
+    window.interval_input.setText("50")
+    window.interval_input.editingFinished.emit()
+    window.interval_input.setText("")
+    window.interval_input.editingFinished.emit()
+
+    assert storage.load_settings().break_interval_minutes == 50
+    assert window.timer.snapshot().break_interval_minutes == 50
+    assert window.interval_input.text() == "50"
+    assert window.timer.snapshot().state == TimerState.IDLE
+    assert warnings
+    window.qt_timer.stop()
+    window.window.close()
+
+
 def test_breaking_interval_change_applies_to_next_work_round(tmp_path, monkeypatch) -> None:
     storage = JsonStorage(tmp_path / "daily_records.json")
     window = MainWindow(storage=storage)
@@ -217,6 +258,44 @@ def test_reminder_dialog_close_defaults_to_snooze(tmp_path) -> None:
 
     assert dialog.action == ReminderAction.SNOOZE
     assert dialog.result() == QDialog.Accepted
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_reminder_dialog_snooze_with_invalid_interval_does_not_stick_in_reminder(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    warnings: list[str] = []
+
+    class FakeReminderDialog:
+        def __init__(self, parent) -> None:
+            self.action = ReminderAction.SNOOZE
+
+        def exec_(self) -> int:
+            return QDialog.Accepted
+
+    monkeypatch.setattr(main_window_module, "ReminderDialog", FakeReminderDialog)
+    monkeypatch.setattr(
+        main_window_module.QMessageBox,
+        "warning",
+        lambda *args, **kwargs: warnings.append(str(args[2])),
+    )
+
+    window._on_start_work()
+    window.timer.tick(45 * 60)
+    window._render(window.timer.snapshot())
+    window.interval_input.setText("0")
+
+    window._show_reminder_dialog()
+
+    snapshot = window.timer.snapshot()
+    assert snapshot.state == TimerState.WORKING
+    assert snapshot.remaining_seconds == 5 * 60
+    assert window.interval_input.text() == "45"
+    assert warnings
     window.qt_timer.stop()
     window.window.close()
 

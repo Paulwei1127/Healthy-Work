@@ -153,6 +153,7 @@ class MainWindow:
         self._reminder_prompted_for_current_round = False
         self._reminder_dialog_open = False
         self._date_rollover_pending = False
+        self._last_valid_interval_minutes = self.timer.break_interval_minutes
 
         self.window = QMainWindow()
         self.window.setWindowTitle("健康工作小工具")
@@ -390,6 +391,7 @@ class MainWindow:
         self.interval_input.setValidator(QIntValidator(1, 999, self.interval_input))
         self.interval_input.setAlignment(Qt.AlignRight)
         self.interval_input.setFixedWidth(82)
+        self.interval_input.editingFinished.connect(self._on_interval_editing_finished)
         settings_tail = QLabel("分鐘提醒休息")
         settings_tail.setWordWrap(True)
         settings_layout.addWidget(settings_label)
@@ -583,7 +585,10 @@ class MainWindow:
             QMessageBox.warning(self.window, "設定保存失敗", str(exc))
 
     def _apply_interval_setting(self) -> int | None:
-        interval_minutes = self._read_interval_minutes()
+        if self.timer.snapshot().state == TimerState.WORKING:
+            return self.timer.break_interval_minutes
+
+        interval_minutes = self._read_interval_minutes(restore_on_error=True)
         if interval_minutes is None:
             return None
 
@@ -591,10 +596,36 @@ class MainWindow:
             self.timer.set_break_interval(interval_minutes)
         except (TimerStateError, ValueError) as exc:
             QMessageBox.warning(self.window, "無法套用休息間隔", str(exc))
+            self._restore_interval_input()
             return None
 
         self._save_current_settings(interval_minutes)
+        self._last_valid_interval_minutes = interval_minutes
+        self._render(self.timer.snapshot())
         return interval_minutes
+
+    def _on_interval_editing_finished(self) -> None:
+        if self.timer.snapshot().state == TimerState.WORKING:
+            self._restore_interval_input()
+            return
+
+        self._apply_interval_setting()
+
+    def _restore_interval_input(self) -> None:
+        previous_block_state = self.interval_input.blockSignals(True)
+        self.interval_input.setText(str(self._last_valid_interval_minutes))
+        self.interval_input.blockSignals(previous_block_state)
+
+    def _restore_invalid_interval_after_action(self) -> None:
+        if self._read_interval_minutes(show_errors=False) is not None:
+            return
+
+        QMessageBox.warning(
+            self.window,
+            "輸入錯誤",
+            "休息間隔無效，已還原為上一個有效設定。",
+        )
+        self._restore_interval_input()
 
     def _on_window_close(self, event) -> None:  # type: ignore[no-untyped-def]
         self._save_work_minutes_if_needed(force=True, show_errors=True)
@@ -617,12 +648,12 @@ class MainWindow:
 
     def _on_start_work(self) -> None:
         self._check_date_rollover()
-        interval_minutes = self._read_interval_minutes()
+        interval_minutes = self._apply_interval_setting()
         if interval_minutes is None:
             return
 
         if self._run_timer_action(lambda: self._start_work_from_current_state(interval_minutes)):
-            self._save_current_settings(interval_minutes)
+            self._last_valid_interval_minutes = interval_minutes
 
     def _start_work_from_current_state(self, interval_minutes: int) -> TimerSnapshot:
         if self.timer.snapshot().state == TimerState.DAY_ENDED:
@@ -636,12 +667,14 @@ class MainWindow:
 
     def _on_restart_countdown(self) -> None:
         self._check_date_rollover()
-        interval_minutes = self._read_interval_minutes()
+        interval_minutes = self._apply_interval_setting()
         if interval_minutes is None:
-            return
+            if self.timer.snapshot().state != TimerState.REMINDER:
+                return
+            interval_minutes = self._last_valid_interval_minutes
 
         if self._run_timer_action(lambda: self.timer.restart_countdown(interval_minutes)):
-            self._save_current_settings(interval_minutes)
+            self._last_valid_interval_minutes = interval_minutes
 
     def _on_resume_work(self) -> bool:
         if self._apply_interval_setting() is None:
@@ -650,10 +683,8 @@ class MainWindow:
         return self._run_timer_action(self.timer.resume_work)
 
     def _on_snooze(self) -> None:
-        if self._apply_interval_setting() is None:
-            return
-
-        self._run_timer_action(self.timer.snooze)
+        if self._run_timer_action(self.timer.snooze):
+            self._restore_invalid_interval_after_action()
 
     def _on_return_to_work(self) -> None:
         try:
@@ -668,14 +699,15 @@ class MainWindow:
 
     def _on_start_break(self) -> None:
         snapshot = self.timer.snapshot()
-        if snapshot.state in {TimerState.PAUSED, TimerState.REMINDER}:
+        if snapshot.state == TimerState.PAUSED:
             if self._apply_interval_setting() is None:
                 return
 
             snapshot = self.timer.snapshot()
 
         if snapshot.state == TimerState.REMINDER:
-            self._run_timer_action(self.timer.start_break)
+            if self._run_timer_action(self.timer.start_break):
+                self._restore_invalid_interval_after_action()
             return
 
         self._run_timer_action(self.timer.start_break_early)
@@ -807,20 +839,33 @@ class MainWindow:
             self._render(self.timer.snapshot())
         return True
 
-    def _read_interval_minutes(self) -> int | None:
+    def _read_interval_minutes(
+        self,
+        restore_on_error: bool = False,
+        show_errors: bool = True,
+    ) -> int | None:
         raw_value = self.interval_input.text().strip()
         if not raw_value:
-            QMessageBox.warning(self.window, "輸入錯誤", "休息間隔不可空白。")
+            if show_errors:
+                QMessageBox.warning(self.window, "輸入錯誤", "休息間隔不可空白。")
+            if restore_on_error:
+                self._restore_interval_input()
             return None
 
         try:
             interval_minutes = int(raw_value)
         except ValueError:
-            QMessageBox.warning(self.window, "輸入錯誤", "休息間隔必須是正整數。")
+            if show_errors:
+                QMessageBox.warning(self.window, "輸入錯誤", "休息間隔必須是正整數。")
+            if restore_on_error:
+                self._restore_interval_input()
             return None
 
         if interval_minutes < 1:
-            QMessageBox.warning(self.window, "輸入錯誤", "休息間隔不可小於 1 分鐘。")
+            if show_errors:
+                QMessageBox.warning(self.window, "輸入錯誤", "休息間隔不可小於 1 分鐘。")
+            if restore_on_error:
+                self._restore_interval_input()
             return None
 
         return interval_minutes
