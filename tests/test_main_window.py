@@ -9,7 +9,7 @@ from app.data.models import BreakRecord
 from app.core.timer import TimerState
 from app.data.storage import JsonStorage
 import app.ui.main_window as main_window_module
-from app.ui.main_window import MainWindow
+from app.ui.main_window import ANIMATION_BOX_SIZE, MainWindow, TIMER_STATE_TO_GIF
 from app.ui.reminder_dialog import ReminderAction, ReminderDialog
 
 
@@ -111,6 +111,41 @@ def test_primary_button_has_disabled_stylesheet_rule(tmp_path) -> None:
     window = MainWindow(storage=storage)
 
     assert "QPushButton#PrimaryButton:disabled" in window.window.styleSheet()
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_each_timer_state_has_animation_gif_mapping() -> None:
+    assert set(TIMER_STATE_TO_GIF) == set(TimerState)
+
+
+def test_state_animation_is_not_rebuilt_when_state_is_unchanged(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    window._update_state_animation(TimerState.IDLE)
+    first_movie = window._state_animation_movie
+    window._update_state_animation(TimerState.IDLE)
+
+    assert window._state_animation_movie is first_movie
+    assert window.animation_label.size() == ANIMATION_BOX_SIZE
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_missing_animation_gif_does_not_crash_window_init(tmp_path, monkeypatch) -> None:
+    monkeypatch.setitem(
+        main_window_module.TIMER_STATE_TO_GIF,
+        TimerState.IDLE,
+        "gif/does-not-exist.gif",
+    )
+    storage = JsonStorage(tmp_path / "daily_records.json")
+
+    window = MainWindow(storage=storage)
+
+    assert window._state_animation_state == TimerState.IDLE
+    assert window._state_animation_movie is None
+    assert window.animation_label.size() == ANIMATION_BOX_SIZE
     window.qt_timer.stop()
     window.window.close()
 

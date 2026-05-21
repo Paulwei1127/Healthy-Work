@@ -119,6 +119,15 @@
       "duration_minutes": 1,
       "water_ml": 50,
       "note": ""
+    },
+    {
+      "id": "a769b21b-b24a-483d-b5dd-742209b33c51",
+      "date": "2026-05-21",
+      "start_time": "2026-05-21T14:41:35",
+      "end_time": "2026-05-21T14:41:44",
+      "duration_minutes": 1,
+      "water_ml": 0,
+      "note": ""
     }
   ],
   "daily_summaries": [
@@ -141,20 +150,20 @@
     {
       "date": "2026-05-21",
       "work_minutes": 14,
-      "break_minutes": 19,
-      "break_count": 11,
+      "break_minutes": 20,
+      "break_count": 12,
       "water_ml": 100,
-      "average_work_session_minutes": 1.27,
-      "health_score": 70,
+      "average_work_session_minutes": 1.17,
+      "health_score": 80,
       "suggestions": [
         "今天休息頻率良好。",
         "今天喝水量偏低，建議增加喝水量。",
         "今天平均工作時段控制得不錯。",
-        "今天休息時間偏少，建議增加短暫走動與眼睛休息。",
+        "今天休息總時間達到基本目標。",
         "眼睛休息可以採用 20-20-20：每 20 分鐘看向遠方 20 秒。",
         "休息時建議伸展肩頸、起身走動，順手補充水分。"
       ],
-      "created_at": "2026-05-21T14:20:02"
+      "created_at": "2026-05-21T14:42:21"
     }
   ],
   "daily_work_minutes": {
