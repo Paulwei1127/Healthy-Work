@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -12,11 +13,18 @@ from .models import AppSettings, BreakRecord, DailySummary, WorkSessionRecord
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_STORAGE_PATH = PROJECT_ROOT / "data" / "daily_records.json"
 
 
 class StorageError(RuntimeError):
     """Raised when the local records file cannot be read or written."""
+
+
+def get_default_storage_path() -> Path:
+    """Return the local user data path for source runs and bundled apps."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / "data" / "daily_records.json"
+
+    return PROJECT_ROOT / "data" / "daily_records.json"
 
 
 def create_empty_data() -> dict[str, Any]:
@@ -32,8 +40,10 @@ def create_empty_data() -> dict[str, Any]:
 class JsonStorage:
     """Small repository for the MVP JSON data file."""
 
-    def __init__(self, file_path: str | Path = DEFAULT_STORAGE_PATH) -> None:
-        self.file_path = Path(file_path)
+    def __init__(self, file_path: str | Path | None = None) -> None:
+        self.file_path = (
+            Path(file_path) if file_path is not None else get_default_storage_path()
+        )
         self.last_recovery_message: str | None = None
 
     def consume_recovery_message(self) -> str | None:
