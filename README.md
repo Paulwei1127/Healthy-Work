@@ -39,7 +39,7 @@ On startup, the UI loads today's saved break records and work minutes once, init
 The PyQt5 UI enables Windows high-DPI scaling, uses a rounded Windows font stack for readability, and keeps the main content in a resizable scrollable window.
 Work minutes are saved periodically, and the app checks for date rollover while running.
 Rest interval settings are editable outside the active `Working` countdown and are saved when the input edit is finished. Invalid interval input is rejected and restored to the last valid value.
-The main timer card prefers Lottie JSON animations from `gif/json` through PyQtWebEngine and the bundled offline `gif/json/lottie.min.js` player. If PyQtWebEngine, the local Lottie player, or a JSON animation is unavailable, the UI falls back to the existing GIF animations in `gif` without blocking the timer.
+The main timer card and the break reminder dialog prefer Lottie JSON animations from `gif/json` through PyQtWebEngine and the bundled offline `gif/json/lottie.min.js` player. If PyQtWebEngine, the local Lottie player, or a JSON animation is unavailable, the UI falls back to the existing GIF animations in `gif` without blocking the timer or reminder flow.
 
 When packaging with PyInstaller, include the full `gif/` folder, including `gif/json/lottie.min.js`, all Lottie JSON files, and all GIF fallback files.
 

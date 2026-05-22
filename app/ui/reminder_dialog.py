@@ -168,13 +168,19 @@ class ReminderDialog(QDialog):
 
     def _finish(self, action: ReminderAction) -> None:
         self.action = action
-        self.animation_widget.clear()
+        self._clear_animation_safely()
         self.accept()
 
     def reject(self) -> None:  # type: ignore[override]
         self.action = ReminderAction.SNOOZE
-        self.animation_widget.clear()
+        self._clear_animation_safely()
         super().accept()
+
+    def _clear_animation_safely(self) -> None:
+        try:
+            self.animation_widget.clear()
+        except RuntimeError:
+            pass
 
     def _raise_and_focus(self) -> None:
         self.show()

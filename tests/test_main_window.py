@@ -234,7 +234,7 @@ def test_webengine_unavailable_falls_back_to_gif_without_crashing(
     tmp_path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr(main_window_module, "QWebEngineView", None)
+    monkeypatch.setattr(animation_module, "QWebEngineView", None)
     storage = JsonStorage(tmp_path / "daily_records.json")
 
     window = MainWindow(storage=storage)
@@ -279,6 +279,100 @@ def test_lottie_set_html_failure_falls_back_to_gif(tmp_path) -> None:
     window._update_state_animation(TimerState.IDLE)
 
     assert window._state_animation_mode == "gif"
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_reminder_dialog_initializes_animation_widget(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    dialog = ReminderDialog(window.window)
+
+    assert dialog.animation_widget.size() == REMINDER_ANIMATION_BOX_SIZE
+    assert dialog.animation_mode in {"lottie", "gif", "blank"}
+    dialog.reject()
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_reminder_dialog_uses_reminder_animation_paths(tmp_path, monkeypatch) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    load_calls = []
+
+    def fake_load(self, lottie_path, gif_path):
+        load_calls.append((lottie_path, gif_path))
+        return "lottie"
+
+    monkeypatch.setattr(
+        reminder_dialog_module.LottieGifAnimationWidget,
+        "load",
+        fake_load,
+    )
+
+    dialog = ReminderDialog(window.window)
+
+    assert load_calls == [(REMINDER_LOTTIE_PATH, REMINDER_GIF_PATH)]
+    assert dialog.animation_mode == "lottie"
+    dialog.reject()
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_reminder_dialog_falls_back_to_gif_when_lottie_unavailable(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    dialog = ReminderDialog(window.window)
+
+    assert dialog.animation_mode == "gif"
+    dialog.reject()
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_reminder_dialog_uses_blank_animation_when_all_assets_missing(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    monkeypatch.setattr(
+        reminder_dialog_module,
+        "REMINDER_LOTTIE_PATH",
+        "gif/json/does-not-exist.json",
+    )
+    monkeypatch.setattr(
+        reminder_dialog_module,
+        "REMINDER_GIF_PATH",
+        "gif/does-not-exist.gif",
+    )
+
+    dialog = ReminderDialog(window.window)
+
+    assert dialog.animation_mode == "blank"
+    dialog.reject()
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_reminder_dialog_reject_still_snoozes_when_animation_clear_fails(
+    tmp_path,
+) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    dialog = ReminderDialog(window.window)
+
+    def fail_clear():
+        raise RuntimeError("clear failed")
+
+    dialog.animation_widget.clear = fail_clear  # type: ignore[method-assign]
+
+    dialog.reject()
+
+    assert dialog.action == ReminderAction.SNOOZE
+    assert dialog.result() == QDialog.Accepted
     window.qt_timer.stop()
     window.window.close()
 
