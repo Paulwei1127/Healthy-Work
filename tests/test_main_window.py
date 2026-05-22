@@ -8,9 +8,24 @@ from PyQt5.QtWidgets import QDialog
 from app.data.models import BreakRecord
 from app.core.timer import TimerState
 from app.data.storage import JsonStorage
+import app.ui.animation as animation_module
 import app.ui.main_window as main_window_module
-from app.ui.main_window import ANIMATION_BOX_SIZE, MainWindow, TIMER_STATE_TO_GIF
-from app.ui.reminder_dialog import ReminderAction, ReminderDialog
+import app.ui.reminder_dialog as reminder_dialog_module
+from app.ui.main_window import (
+    ANIMATION_BOX_SIZE,
+    LOTTIE_WEB_PLAYER_PATH,
+    MainWindow,
+    TIMER_STATE_TO_GIF,
+    TIMER_STATE_TO_LOTTIE,
+    get_resource_path,
+)
+from app.ui.reminder_dialog import (
+    REMINDER_ANIMATION_BOX_SIZE,
+    REMINDER_GIF_PATH,
+    REMINDER_LOTTIE_PATH,
+    ReminderAction,
+    ReminderDialog,
+)
 
 
 def test_reminder_dialog_is_triggered_once_per_reminder_round(tmp_path) -> None:
@@ -119,16 +134,151 @@ def test_each_timer_state_has_animation_gif_mapping() -> None:
     assert set(TIMER_STATE_TO_GIF) == set(TimerState)
 
 
+def test_each_timer_state_has_lottie_json_mapping() -> None:
+    assert set(TIMER_STATE_TO_LOTTIE) == set(TimerState)
+    assert get_resource_path(LOTTIE_WEB_PLAYER_PATH).exists()
+    for relative_path in TIMER_STATE_TO_LOTTIE.values():
+        assert get_resource_path(relative_path).exists()
+
+
+def test_each_timer_state_has_gif_fallback_file() -> None:
+    for relative_path in TIMER_STATE_TO_GIF.values():
+        assert get_resource_path(relative_path).exists()
+
+
 def test_state_animation_is_not_rebuilt_when_state_is_unchanged(tmp_path) -> None:
     storage = JsonStorage(tmp_path / "daily_records.json")
     window = MainWindow(storage=storage)
 
     window._update_state_animation(TimerState.IDLE)
     first_movie = window._state_animation_movie
+    first_mode = window._state_animation_mode
+    first_lottie_path = window.lottie_animation_view._loaded_path
     window._update_state_animation(TimerState.IDLE)
 
     assert window._state_animation_movie is first_movie
+    assert window._state_animation_mode == first_mode
+    assert window.lottie_animation_view._loaded_path == first_lottie_path
     assert window.animation_label.size() == ANIMATION_BOX_SIZE
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_lottie_is_preferred_when_loader_succeeds(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    loaded_paths = []
+
+    def fake_load_lottie(animation_path):
+        loaded_paths.append(animation_path)
+        window.lottie_animation_view._loaded_path = animation_path
+        return True
+
+    window._stop_state_animation()
+    window._state_animation_state = None
+    window.lottie_animation_view.load_lottie = fake_load_lottie  # type: ignore[method-assign]
+
+    window._update_state_animation(TimerState.WORKING)
+
+    assert window._state_animation_mode == "lottie"
+    assert window._state_animation_movie is None
+    assert loaded_paths == [get_resource_path(TIMER_STATE_TO_LOTTIE[TimerState.WORKING])]
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_lottie_is_not_reloaded_when_state_is_unchanged(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    loaded_paths = []
+
+    def fake_load_lottie(animation_path):
+        loaded_paths.append(animation_path)
+        window.lottie_animation_view._loaded_path = animation_path
+        return True
+
+    window._stop_state_animation()
+    window._state_animation_state = None
+    window.lottie_animation_view.load_lottie = fake_load_lottie  # type: ignore[method-assign]
+
+    window._update_state_animation(TimerState.PAUSED)
+    window._update_state_animation(TimerState.PAUSED)
+
+    assert window._state_animation_mode == "lottie"
+    assert loaded_paths == [get_resource_path(TIMER_STATE_TO_LOTTIE[TimerState.PAUSED])]
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_missing_lottie_json_falls_back_to_gif_without_crashing(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setitem(
+        main_window_module.TIMER_STATE_TO_LOTTIE,
+        TimerState.IDLE,
+        "gif/json/does-not-exist.json",
+    )
+    storage = JsonStorage(tmp_path / "daily_records.json")
+
+    window = MainWindow(storage=storage)
+
+    assert window._state_animation_state == TimerState.IDLE
+    assert window._state_animation_mode == "gif"
+    assert window.animation_label.size() == ANIMATION_BOX_SIZE
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_webengine_unavailable_falls_back_to_gif_without_crashing(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(main_window_module, "QWebEngineView", None)
+    storage = JsonStorage(tmp_path / "daily_records.json")
+
+    window = MainWindow(storage=storage)
+
+    assert window._state_animation_state == TimerState.IDLE
+    assert window._state_animation_mode == "gif"
+    assert window.animation_label.size() == ANIMATION_BOX_SIZE
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_invalid_lottie_json_returns_false_without_crashing(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    invalid_json = tmp_path / "invalid.json"
+    invalid_json.write_text("{", encoding="utf-8")
+
+    class FakeWebEngineView:
+        def setHtml(self, *args, **kwargs):
+            raise AssertionError("invalid JSON should not reach setHtml")
+
+    window.lottie_animation_view._view = FakeWebEngineView()
+
+    assert window.lottie_animation_view.load_lottie(invalid_json) is False
+    window.lottie_animation_view._view = None
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_lottie_set_html_failure_falls_back_to_gif(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    class FailingWebEngineView:
+        def setHtml(self, *args, **kwargs):
+            raise RuntimeError("web engine failed")
+
+    window._stop_state_animation()
+    window._state_animation_state = None
+    window.lottie_animation_view._view = FailingWebEngineView()
+
+    window._update_state_animation(TimerState.IDLE)
+
+    assert window._state_animation_mode == "gif"
     window.qt_timer.stop()
     window.window.close()
 

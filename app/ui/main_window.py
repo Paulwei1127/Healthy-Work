@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
 import time
 from datetime import date
-from pathlib import Path
 from typing import Callable
 
 try:
@@ -45,6 +44,11 @@ from app.core.timer import (
 )
 from app.data.models import AppSettings, BreakRecord
 from app.data.storage import JsonStorage, StorageError
+from app.ui.animation import (
+    LOTTIE_WEB_PLAYER_PATH,
+    LottieGifAnimationWidget,
+    get_resource_path,
+)
 from app.ui.reminder_dialog import ReminderAction, ReminderDialog
 from app.ui.report_dialog import ReportDialog
 
@@ -100,6 +104,16 @@ TIMER_STATE_TO_GIF = {
 }
 
 
+TIMER_STATE_TO_LOTTIE = {
+    TimerState.IDLE: "gif/json/paws animation.json",
+    TimerState.WORKING: "gif/json/rolling cat animation.json",
+    TimerState.PAUSED: "gif/json/Loading Cat.json",
+    TimerState.REMINDER: "gif/json/Le Petit Chat _Cat_ Noir.json",
+    TimerState.BREAKING: "gif/json/Cat playing animation.json",
+    TimerState.DAY_ENDED: "gif/json/Cat is sleeping and rolling.json",
+}
+
+
 _HIGH_DPI_CONFIGURED = False
 
 
@@ -123,12 +137,6 @@ def _pick_font_family() -> str:
         if family in available_families:
             return family
     return "Segoe UI"
-
-
-def get_resource_path(relative_path: str) -> Path:
-    """Return a resource path for normal runs and PyInstaller bundles."""
-    base_path = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
-    return base_path / relative_path
 
 
 class MainWindow:
@@ -174,6 +182,7 @@ class MainWindow:
         self._last_valid_interval_minutes = self.timer.break_interval_minutes
         self._state_animation_movie: QMovie | None = None
         self._state_animation_state: TimerState | None = None
+        self._state_animation_mode: str | None = None
 
         self.window = QMainWindow()
         self.window.setWindowTitle("健康工作小工具")
@@ -270,6 +279,9 @@ class MainWindow:
                     stop:0 #ffffff, stop:1 #ecfeff);
                 border: 1px solid #c7eef2;
                 border-radius: 16px;
+            }
+            QWidget#AnimationContainer {
+                background: transparent;
             }
             QLabel#AnimationLabel {
                 background: transparent;
@@ -434,10 +446,12 @@ class MainWindow:
         timer_layout = QHBoxLayout(timer_card)
         timer_layout.setContentsMargins(18, 14, 18, 14)
         timer_layout.setSpacing(14)
-        self.animation_label = QLabel()
-        self.animation_label.setObjectName("AnimationLabel")
-        self.animation_label.setFixedSize(ANIMATION_BOX_SIZE)
-        self.animation_label.setAlignment(Qt.AlignCenter)
+
+        self.state_animation_widget = LottieGifAnimationWidget(ANIMATION_BOX_SIZE)
+        self.animation_container = self.state_animation_widget
+        self.animation_label = self.state_animation_widget.gif_label
+        self.lottie_animation_view = self.state_animation_widget.lottie_view
+
         self.time_caption_label = QLabel()
         self.time_caption_label.setObjectName("TimerCaption")
         self.time_caption_label.setAlignment(Qt.AlignCenter)
@@ -458,7 +472,7 @@ class MainWindow:
         timer_text_layout.addWidget(self.time_label)
         timer_text_layout.addWidget(self.status_label, alignment=Qt.AlignCenter)
         timer_text_layout.addStretch()
-        timer_layout.addWidget(self.animation_label, alignment=Qt.AlignCenter)
+        timer_layout.addWidget(self.animation_container, alignment=Qt.AlignCenter)
         timer_layout.addLayout(timer_text_layout, stretch=1)
         layout.addWidget(timer_card)
 
@@ -949,33 +963,16 @@ class MainWindow:
 
         self._stop_state_animation()
         self._state_animation_state = state
-        gif_relative_path = TIMER_STATE_TO_GIF.get(state)
-        if not gif_relative_path:
-            return
-
-        gif_path = get_resource_path(gif_relative_path)
-        if not gif_path.exists():
-            return
-
-        movie = QMovie(str(gif_path))
-        if not movie.isValid():
-            return
-
-        movie.jumpToFrame(0)
-        source_size = movie.currentPixmap().size()
-        if source_size.isEmpty():
-            source_size = movie.frameRect().size()
-        movie.setScaledSize(_fit_animation_size(source_size, ANIMATION_BOX_SIZE))
-        self.animation_label.setMovie(movie)
-        self._state_animation_movie = movie
-        movie.start()
+        self._state_animation_mode = self.state_animation_widget.load(
+            TIMER_STATE_TO_LOTTIE.get(state),
+            TIMER_STATE_TO_GIF.get(state),
+        )
+        self._state_animation_movie = self.state_animation_widget.movie
 
     def _stop_state_animation(self) -> None:
-        if self._state_animation_movie is not None:
-            self._state_animation_movie.stop()
-            self._state_animation_movie = None
-
-        self.animation_label.clear()
+        self.state_animation_widget.clear()
+        self._state_animation_movie = None
+        self._state_animation_mode = None
 
     def _render(self, snapshot: TimerSnapshot) -> None:
         state = snapshot.state
@@ -1198,22 +1195,6 @@ def _format_last_break(snapshot: TimerSnapshot) -> str:
     if snapshot.last_completed_break is None:
         return "無"
     return f"{snapshot.last_completed_break.duration_minutes} 分鐘"
-
-
-def _fit_animation_size(source_size: QSize, target_size: QSize) -> QSize:
-    source_width = source_size.width()
-    source_height = source_size.height()
-    target_width = target_size.width()
-    target_height = target_size.height()
-
-    if source_width <= 0 or source_height <= 0:
-        return target_size
-
-    scale = min(target_width / source_width, target_height / source_height)
-    return QSize(
-        max(1, int(source_width * scale)),
-        max(1, int(source_height * scale)),
-    )
 
 
 def _format_minutes(minutes: int) -> str:

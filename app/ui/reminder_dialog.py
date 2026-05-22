@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 
 try:
-    from PyQt5.QtCore import Qt, QTimer
+    from PyQt5.QtCore import QSize, Qt, QTimer
     from PyQt5.QtWidgets import (
         QApplication,
         QDialog,
@@ -22,6 +22,13 @@ except ImportError as exc:  # pragma: no cover - depends on local installation.
         "PyQt5 is required for the current UI. "
         "Install it with: pip install -r requirements.txt"
     ) from exc
+
+from app.ui.animation import LottieGifAnimationWidget
+
+
+REMINDER_ANIMATION_BOX_SIZE = QSize(100, 120)
+REMINDER_LOTTIE_PATH = "gif/json/Le Petit Chat _Cat_ Noir.json"
+REMINDER_GIF_PATH = "gif/Le Petit Chat _Cat_ Noir.gif"
 
 
 class ReminderAction(str, Enum):
@@ -42,8 +49,8 @@ class ReminderDialog(QDialog):
         self.setWindowTitle("該休息一下了")
         self.setModal(True)
         self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
-        self.resize(460, 310)
-        self.setMinimumSize(420, 300)
+        self.resize(460, 390)
+        self.setMinimumSize(420, 360)
 
         font_family = QApplication.instance().font().family()
         self.setStyleSheet(
@@ -57,6 +64,12 @@ class ReminderDialog(QDialog):
                 background: #ffffff;
                 border: 1px solid #f0d9e7;
                 border-radius: 16px;
+            }
+            QWidget#AnimationContainer {
+                background: transparent;
+            }
+            QLabel#AnimationLabel {
+                background: transparent;
             }
             QLabel#Title {
                 color: #2f2533;
@@ -108,6 +121,12 @@ class ReminderDialog(QDialog):
         card_layout.setContentsMargins(16, 16, 16, 16)
         card_layout.setSpacing(10)
 
+        self.animation_widget = LottieGifAnimationWidget(REMINDER_ANIMATION_BOX_SIZE)
+        self.animation_mode = self.animation_widget.load(
+            REMINDER_LOTTIE_PATH,
+            REMINDER_GIF_PATH,
+        )
+
         title = QLabel("該休息一下了")
         title.setObjectName("Title")
         body = _make_message_label(
@@ -120,6 +139,7 @@ class ReminderDialog(QDialog):
         )
         hint = _make_message_label("伸展肩頸、走動一下，回來會更穩。", "Hint")
 
+        card_layout.addWidget(self.animation_widget, alignment=Qt.AlignCenter)
         card_layout.addWidget(title)
         card_layout.addWidget(body)
         card_layout.addWidget(eye_rest)
@@ -148,10 +168,12 @@ class ReminderDialog(QDialog):
 
     def _finish(self, action: ReminderAction) -> None:
         self.action = action
+        self.animation_widget.clear()
         self.accept()
 
     def reject(self) -> None:  # type: ignore[override]
         self.action = ReminderAction.SNOOZE
+        self.animation_widget.clear()
         super().accept()
 
     def _raise_and_focus(self) -> None:
