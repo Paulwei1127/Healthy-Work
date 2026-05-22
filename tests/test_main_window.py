@@ -710,3 +710,422 @@ def test_end_day_can_finish_and_save_active_break(tmp_path, monkeypatch) -> None
     assert shown_reports
     window.qt_timer.stop()
     window.window.close()
+
+
+def test_pause_saves_work_session(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    window._on_start_work()
+    _advance_work_seconds(window, 65)
+    window.pause_button.click()
+
+    records = storage.list_work_session_records(window.today)
+    assert len(records) == 1
+    assert records[0].duration_minutes == 1
+    assert records[0].ended_by == "pause"
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_start_break_early_saves_work_session(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    window._on_start_work()
+    _advance_work_seconds(window, 120)
+    window._on_start_break()
+
+    records = storage.list_work_session_records(window.today)
+    assert len(records) == 1
+    assert records[0].duration_minutes == 2
+    assert records[0].ended_by == "early_break"
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_reminder_transition_does_not_save_work_session(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    window._show_reminder_dialog = lambda: None  # type: ignore[method-assign]
+
+    window.interval_input.setText("1")
+    window._on_start_work()
+    _advance_work_seconds(window, 60)
+
+    records = storage.list_work_session_records(window.today)
+    assert window.timer.snapshot().state == TimerState.REMINDER
+    assert records == []
+    assert window._active_work_session_start_time is not None
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_snooze_extends_same_work_session_until_pause(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    window._show_reminder_dialog = lambda: None  # type: ignore[method-assign]
+
+    window.interval_input.setText("60")
+    window._on_start_work()
+    _advance_work_seconds(window, 60 * 60)
+    assert window.timer.snapshot().state == TimerState.REMINDER
+
+    window._on_snooze()
+    _advance_work_seconds(window, 5 * 60)
+    assert window.timer.snapshot().state == TimerState.REMINDER
+    assert storage.list_work_session_records(window.today) == []
+
+    window._on_snooze()
+    window.pause_button.click()
+
+    records = storage.list_work_session_records(window.today)
+    assert len(records) == 1
+    assert records[0].duration_minutes == 65
+    assert records[0].ended_by == "pause"
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_reminder_start_break_saves_work_session(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    window._show_reminder_dialog = lambda: None  # type: ignore[method-assign]
+
+    window.interval_input.setText("1")
+    window._on_start_work()
+    _advance_work_seconds(window, 60)
+    window._on_start_break()
+
+    records = storage.list_work_session_records(window.today)
+    assert len(records) == 1
+    assert records[0].duration_minutes == 1
+    assert records[0].ended_by == "break"
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_reminder_restart_saves_old_session_and_starts_new_session(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    window._show_reminder_dialog = lambda: None  # type: ignore[method-assign]
+
+    window.interval_input.setText("1")
+    window._on_start_work()
+    _advance_work_seconds(window, 60)
+    window._on_restart_countdown()
+
+    records = storage.list_work_session_records(window.today)
+    assert len(records) == 1
+    assert records[0].ended_by == "restart"
+    assert window.timer.snapshot().state == TimerState.WORKING
+    assert window._active_work_session_start_time is not None
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_multiple_snoozes_do_not_split_work_sessions(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    window._show_reminder_dialog = lambda: None  # type: ignore[method-assign]
+
+    window.interval_input.setText("1")
+    window._on_start_work()
+    _advance_work_seconds(window, 60)
+    window._on_snooze()
+    _advance_work_seconds(window, 5 * 60)
+    window._on_snooze()
+    _advance_work_seconds(window, 5 * 60)
+    window._on_snooze()
+    window.pause_button.click()
+
+    records = storage.list_work_session_records(window.today)
+    assert len(records) == 1
+    assert records[0].duration_minutes == 11
+    assert records[0].ended_by == "pause"
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_repeated_ticks_while_reminder_do_not_end_work_session(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    window._show_reminder_dialog = lambda: None  # type: ignore[method-assign]
+
+    window.interval_input.setText("1")
+    window._on_start_work()
+    _advance_work_seconds(window, 60)
+    _advance_work_seconds(window, 180)
+
+    assert window.timer.snapshot().state == TimerState.REMINDER
+    assert storage.list_work_session_records(window.today) == []
+    assert window._active_work_session_start_time is not None
+    assert window._active_work_session_seconds == 60
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_reminder_ticks_then_snooze_excludes_reminder_wait_from_session_duration(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    window._show_reminder_dialog = lambda: None  # type: ignore[method-assign]
+
+    window.interval_input.setText("1")
+    window._on_start_work()
+    _advance_work_seconds(window, 60)
+    _advance_work_seconds(window, 180)
+    window._on_snooze()
+    _advance_work_seconds(window, 60)
+    window.pause_button.click()
+
+    records = storage.list_work_session_records(window.today)
+    assert len(records) == 1
+    assert records[0].duration_minutes == 2
+    assert records[0].ended_by == "pause"
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_reminder_ticks_then_start_break_saves_work_session(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    window._show_reminder_dialog = lambda: None  # type: ignore[method-assign]
+
+    window.interval_input.setText("1")
+    window._on_start_work()
+    _advance_work_seconds(window, 60)
+    _advance_work_seconds(window, 180)
+    window._on_start_break()
+
+    records = storage.list_work_session_records(window.today)
+    assert len(records) == 1
+    assert records[0].duration_minutes == 1
+    assert records[0].ended_by == "break"
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_reminder_ticks_then_restart_saves_old_session_and_starts_new_session(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    window._show_reminder_dialog = lambda: None  # type: ignore[method-assign]
+
+    window.interval_input.setText("1")
+    window._on_start_work()
+    _advance_work_seconds(window, 60)
+    _advance_work_seconds(window, 180)
+    window._on_restart_countdown()
+
+    records = storage.list_work_session_records(window.today)
+    assert len(records) == 1
+    assert records[0].duration_minutes == 1
+    assert records[0].ended_by == "restart"
+    assert window.timer.snapshot().state == TimerState.WORKING
+    assert window._active_work_session_start_time is not None
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_close_end_day_and_rollover_save_session_from_reminder_state(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    window._show_reminder_dialog = lambda: None  # type: ignore[method-assign]
+
+    class FakeReportDialog:
+        def __init__(self, parent, summary) -> None:
+            self.summary = summary
+
+        def show(self) -> None:
+            pass
+
+    monkeypatch.setattr(main_window_module, "ReportDialog", FakeReportDialog)
+
+    window.interval_input.setText("1")
+    window._on_start_work()
+    _advance_work_seconds(window, 60)
+    window._on_end_day()
+    assert storage.list_work_session_records(window.today)[0].ended_by == "end_day"
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_window_close_from_reminder_saves_active_session(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    window._show_reminder_dialog = lambda: None  # type: ignore[method-assign]
+
+    class FakeCloseEvent:
+        accepted = False
+
+        def accept(self) -> None:
+            self.accepted = True
+
+    event = FakeCloseEvent()
+    window.interval_input.setText("1")
+    window._on_start_work()
+    _advance_work_seconds(window, 60)
+    window._on_window_close(event)
+
+    records = storage.list_work_session_records(window.today)
+    assert event.accepted
+    assert len(records) == 1
+    assert records[0].ended_by == "unknown"
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_date_rollover_from_reminder_saves_active_session(tmp_path) -> None:
+    current_date = date(2026, 5, 20)
+    storage = JsonStorage(tmp_path / "daily_records.json")
+
+    def date_provider() -> date:
+        return current_date
+
+    window = MainWindow(storage=storage, date_provider=date_provider)
+    window._show_reminder_dialog = lambda: None  # type: ignore[method-assign]
+
+    window.interval_input.setText("1")
+    window._on_start_work()
+    _advance_work_seconds(window, 60)
+    current_date = date(2026, 5, 21)
+
+    assert window._check_date_rollover() is True
+
+    records = storage.list_work_session_records("2026-05-20")
+    assert len(records) == 1
+    assert records[0].ended_by == "day_rollover"
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_restart_countdown_saves_old_session_and_starts_new_session(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    window._on_start_work()
+    _advance_work_seconds(window, 65)
+    window._on_restart_countdown()
+
+    records = storage.list_work_session_records(window.today)
+    assert len(records) == 1
+    assert records[0].ended_by == "restart"
+    assert window._active_work_session_start_time is not None
+
+    _advance_work_seconds(window, 60)
+    window.pause_button.click()
+
+    records = storage.list_work_session_records(window.today)
+    assert len(records) == 2
+    assert [record.ended_by for record in records] == ["restart", "pause"]
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_end_day_saves_active_work_session(tmp_path, monkeypatch) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    shown_reports: list[object] = []
+
+    class FakeReportDialog:
+        def __init__(self, parent, summary) -> None:
+            self.summary = summary
+
+        def show(self) -> None:
+            shown_reports.append(self.summary)
+
+    monkeypatch.setattr(main_window_module, "ReportDialog", FakeReportDialog)
+
+    window._on_start_work()
+    _advance_work_seconds(window, 60)
+    window._on_end_day()
+
+    records = storage.list_work_session_records(window.today)
+    assert len(records) == 1
+    assert records[0].ended_by == "end_day"
+    assert shown_reports[0].longest_work_session_minutes == 1
+    assert shown_reports[0].work_session_count == 1
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_window_close_saves_active_work_session(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    class FakeCloseEvent:
+        accepted = False
+
+        def accept(self) -> None:
+            self.accepted = True
+
+    event = FakeCloseEvent()
+    window._on_start_work()
+    _advance_work_seconds(window, 60)
+    window._on_window_close(event)
+
+    records = storage.list_work_session_records(window.today)
+    assert event.accepted
+    assert len(records) == 1
+    assert records[0].ended_by == "unknown"
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_date_rollover_saves_old_day_work_session(tmp_path) -> None:
+    current_date = date(2026, 5, 20)
+    storage = JsonStorage(tmp_path / "daily_records.json")
+
+    def date_provider() -> date:
+        return current_date
+
+    window = MainWindow(storage=storage, date_provider=date_provider)
+
+    window._on_start_work()
+    _advance_work_seconds(window, 60)
+    current_date = date(2026, 5, 21)
+
+    assert window._check_date_rollover() is True
+
+    records = storage.list_work_session_records("2026-05-20")
+    assert len(records) == 1
+    assert records[0].date == "2026-05-20"
+    assert records[0].ended_by == "day_rollover"
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_health_report_longest_session_reflects_snoozed_work(tmp_path, monkeypatch) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    shown_reports: list[object] = []
+    window._show_reminder_dialog = lambda: None  # type: ignore[method-assign]
+
+    class FakeReportDialog:
+        def __init__(self, parent, summary) -> None:
+            self.summary = summary
+
+        def show(self) -> None:
+            shown_reports.append(self.summary)
+
+    monkeypatch.setattr(main_window_module, "ReportDialog", FakeReportDialog)
+
+    window.interval_input.setText("60")
+    window._on_start_work()
+    _advance_work_seconds(window, 60 * 60)
+    window._on_snooze()
+    _advance_work_seconds(window, 5 * 60)
+    window._on_snooze()
+    window._on_end_day()
+
+    assert shown_reports[0].longest_work_session_minutes == 65
+    assert any("最長連續工作 65 分鐘" in item for item in shown_reports[0].suggestions)
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def _advance_work_seconds(window: MainWindow, seconds: int) -> None:
+    window._last_tick_monotonic -= seconds
+    window._on_tick()

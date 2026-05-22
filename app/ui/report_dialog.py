@@ -139,7 +139,7 @@ class ReportDialog:
         score_layout.setSpacing(8)
         score_title = QLabel("健康度評分")
         score_title.setObjectName("Section")
-        score = QLabel(f"{self.summary.health_score} / 100")
+        score = QLabel(_format_health_score(self.summary))
         score.setObjectName("Score")
         score.setAlignment(Qt.AlignCenter)
         score_layout.addWidget(score_title)
@@ -157,6 +157,8 @@ class ReportDialog:
             ("休息次數", f"{self.summary.break_count} 次"),
             ("平均工作時長", _format_average_work(self.summary)),
             ("喝水總量", f"{self.summary.water_ml} ml"),
+            ("最長連續工作", _format_longest_work(self.summary)),
+            ("工作區段次數", _format_work_session_count(self.summary)),
             ("基本喝水目標", f"{self.summary.basic_water_target_ml} ml"),
             ("理想喝水目標", f"{self.summary.ideal_water_target_ml} ml"),
             ("建議休息總量", _format_minutes(self.summary.recommended_break_minutes)),
@@ -201,10 +203,12 @@ def format_daily_summary_report(summary: DailySummary) -> str:
             f"休息次數：{summary.break_count} 次",
             f"平均每次工作時長：{average_work}",
             f"喝水總量：{summary.water_ml} ml",
+            f"最長連續工作：{_format_longest_work(summary)}",
+            f"工作區段次數：{_format_work_session_count(summary)}",
             f"基本喝水目標：{summary.basic_water_target_ml} ml",
             f"理想喝水目標：{summary.ideal_water_target_ml} ml",
             f"建議休息總量：{_format_minutes(summary.recommended_break_minutes)}",
-            f"健康度評分：{summary.health_score} / 100",
+            f"健康度評分：{_format_health_score(summary)}",
             "",
             "建議：",
             suggestions if suggestions else "- 今天沒有可用建議。",
@@ -255,7 +259,39 @@ def _format_minutes(minutes: int) -> str:
     return f"{remaining_minutes} 分鐘"
 
 
+def _format_health_score(summary: DailySummary) -> str:
+    if summary.work_minutes == 0:
+        return "今天尚未工作"
+    if summary.work_minutes < 30:
+        return "資料較少，暫不評分"
+    if summary.health_score is not None:
+        return f"{summary.health_score} / 100"
+    return "資料較少，暫不評分"
+
+
 def _format_average_work(summary: DailySummary) -> str:
     if summary.average_work_session_minutes is None:
-        return "N/A"
+        return _missing_work_session_text(summary)
     return f"{summary.average_work_session_minutes:.0f} 分鐘"
+
+
+def _format_longest_work(summary: DailySummary) -> str:
+    if summary.longest_work_session_minutes is None:
+        return _missing_work_session_text(summary)
+    return f"{summary.longest_work_session_minutes} 分鐘"
+
+
+def _format_work_session_count(summary: DailySummary) -> str:
+    if summary.work_session_count <= 0:
+        if summary.work_minutes == 0:
+            return "今天尚未工作"
+        return "尚無工作區段紀錄"
+    return f"{summary.work_session_count} 段"
+
+
+def _missing_work_session_text(summary: DailySummary) -> str:
+    if summary.work_minutes == 0:
+        return "今天尚未工作"
+    if summary.work_session_count == 0:
+        return "尚無工作區段紀錄"
+    return "暫無資料"

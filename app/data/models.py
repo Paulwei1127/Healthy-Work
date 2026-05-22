@@ -208,11 +208,12 @@ class DailySummary:
     break_count: int
     water_ml: int
     average_work_session_minutes: float | None
-    health_score: int
+    health_score: int | None
     basic_water_target_ml: int = 0
     ideal_water_target_ml: int = 0
     recommended_break_minutes: int = 0
     longest_work_session_minutes: int | None = None
+    work_session_count: int = 0
     suggestions: list[str] = field(default_factory=list)
     created_at: str = field(default_factory=_iso_now)
 
@@ -227,8 +228,12 @@ class DailySummary:
         self.average_work_session_minutes = _coerce_optional_float(
             self.average_work_session_minutes, "average_work_session_minutes"
         )
-        self.health_score = _coerce_int(self.health_score, "health_score", min_value=0)
-        if self.health_score > 100:
+        self.health_score = _coerce_optional_int(
+            self.health_score,
+            "health_score",
+            min_value=0,
+        )
+        if self.health_score is not None and self.health_score > 100:
             raise ValueError("health_score must be between 0 and 100.")
         self.basic_water_target_ml = _coerce_int(
             self.basic_water_target_ml, "basic_water_target_ml", min_value=0
@@ -244,6 +249,11 @@ class DailySummary:
         self.longest_work_session_minutes = _coerce_optional_int(
             self.longest_work_session_minutes,
             "longest_work_session_minutes",
+            min_value=0,
+        )
+        self.work_session_count = _coerce_int(
+            self.work_session_count,
+            "work_session_count",
             min_value=0,
         )
 
@@ -264,11 +274,12 @@ class DailySummary:
             break_count=data.get("break_count", 0),
             water_ml=data.get("water_ml", 0),
             average_work_session_minutes=data.get("average_work_session_minutes"),
-            health_score=data.get("health_score", 0),
+            health_score=data.get("health_score"),
             basic_water_target_ml=data.get("basic_water_target_ml", 0),
             ideal_water_target_ml=data.get("ideal_water_target_ml", 0),
             recommended_break_minutes=data.get("recommended_break_minutes", 0),
             longest_work_session_minutes=data.get("longest_work_session_minutes"),
+            work_session_count=data.get("work_session_count", 0),
             suggestions=data.get("suggestions", []),
             created_at=data.get("created_at", _iso_now()),
         )
@@ -286,6 +297,7 @@ class DailySummary:
             "ideal_water_target_ml": self.ideal_water_target_ml,
             "recommended_break_minutes": self.recommended_break_minutes,
             "longest_work_session_minutes": self.longest_work_session_minutes,
+            "work_session_count": self.work_session_count,
             "suggestions": list(self.suggestions),
             "created_at": self.created_at,
         }

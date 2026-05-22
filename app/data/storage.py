@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .models import AppSettings, BreakRecord, DailySummary
+from .models import AppSettings, BreakRecord, DailySummary, WorkSessionRecord
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -23,6 +23,7 @@ def create_empty_data() -> dict[str, Any]:
     return {
         "settings": AppSettings().to_dict(),
         "break_records": [],
+        "work_session_records": [],
         "daily_summaries": [],
         "daily_work_minutes": {},
     }
@@ -100,6 +101,26 @@ class JsonStorage:
         data["break_records"].append(record.to_dict())
         self.save_data(data)
 
+    def list_work_session_records(
+        self,
+        record_date: str | None = None,
+    ) -> list[WorkSessionRecord]:
+        data = self.load_data()
+        records = [
+            WorkSessionRecord.from_dict(item)
+            for item in data["work_session_records"]
+        ]
+
+        if record_date is None:
+            return records
+
+        return [record for record in records if record.date == record_date]
+
+    def add_work_session_record(self, record: WorkSessionRecord) -> None:
+        data = self.load_data()
+        data["work_session_records"].append(record.to_dict())
+        self.save_data(data)
+
     def list_daily_summaries(self) -> list[DailySummary]:
         data = self.load_data()
         return [DailySummary.from_dict(item) for item in data["daily_summaries"]]
@@ -168,6 +189,9 @@ class JsonStorage:
 
         settings = AppSettings.from_dict(data.get("settings")).to_dict()
         break_records = self._normalize_break_records(data.get("break_records", []))
+        work_session_records = self._normalize_work_session_records(
+            data.get("work_session_records", [])
+        )
         daily_summaries = self._normalize_daily_summaries(
             data.get("daily_summaries", [])
         )
@@ -178,6 +202,7 @@ class JsonStorage:
         return {
             "settings": settings,
             "break_records": break_records,
+            "work_session_records": work_session_records,
             "daily_summaries": daily_summaries,
             "daily_work_minutes": daily_work_minutes,
         }
@@ -187,6 +212,15 @@ class JsonStorage:
             raise ValueError("break_records must be a list.")
 
         return [BreakRecord.from_dict(record).to_dict() for record in records]
+
+    def _normalize_work_session_records(
+        self,
+        records: Any,
+    ) -> list[dict[str, Any]]:
+        if not isinstance(records, list):
+            raise ValueError("work_session_records must be a list.")
+
+        return [WorkSessionRecord.from_dict(record).to_dict() for record in records]
 
     def _normalize_daily_summaries(self, summaries: Any) -> list[dict[str, Any]]:
         if not isinstance(summaries, list):

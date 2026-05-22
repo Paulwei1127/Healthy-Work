@@ -48,8 +48,13 @@ When packaging with PyInstaller, include the full `gif/` folder, including `gif/
 The health score uses rule-based local logic, without an AI API.
 
 - Water targets scale with recorded work time instead of using one fixed daily threshold. The basic target is `1500 ml / 16 waking hours` (about 94 ml per work hour), and the ideal target is `2000 ml / 16 waking hours` (125 ml per work hour). There is no daily cap; long workdays scale proportionally.
+- Formal health scores are shown only when there is enough work data. If no work has been recorded, the report shows `今天尚未工作`; if recorded work is under 30 minutes, it shows `資料較少，暫不評分`; at 30 minutes or more, it shows the normal `X / 100` score.
+- Older saved summaries may still contain a numeric health score, but reports still apply the current display rule first: under 30 recorded work minutes shows `今天尚未工作` or `資料較少，暫不評分` instead of a misleading score.
 - Very short work sessions under 30 minutes do not receive a heavy water penalty.
-- The rest rhythm goal is to avoid continuous work sessions longer than 60 minutes. The data model now includes a future-ready `WorkSessionRecord`, but the MVP does not yet persist exact work sessions from the timer. Until that is wired in, reports clearly describe this part as an estimate based on `average_work_session_minutes`.
+- The rest rhythm goal is to avoid any continuous work session longer than 60 minutes. The app records precise `WorkSessionRecord` entries when work starts and truly ends through pause, break, restart, end day, date rollover, or app close. Health scoring uses the longest recorded work session first.
+- Reminder is only a prompt, not a break. Staying on the reminder screen does not split a work session, and snooze also does not split it. Reminder wait time is not counted as work seconds, but the open session is kept until you actually pause, rest, restart, end the day, cross dates, or close the app.
+- `average_work_session_minutes` remains for old data compatibility and auxiliary display. It is used only as an explicit estimate when no precise work session records are available.
+- Reports use friendly missing-data text such as `今天尚未工作` or `尚無工作區段紀錄` instead of engineering placeholders like `N/A`.
 - Total break time is a secondary target based on work duration: at least 5 minutes of break time per recorded work hour.
 - Suggestions include the recorded work duration, basic and ideal water targets, actual water intake, estimated work rhythm, and proportional break-time target.
 
@@ -76,7 +81,7 @@ Current storage responsibilities:
 
 - Create the JSON file automatically when it does not exist
 - Back up invalid JSON files with an `.invalid-YYYYMMDD-HHMMSS.json` suffix
-- Store app settings, break records, daily summaries, and per-day work minutes
+- Store app settings, break records, work session records, daily summaries, and per-day work minutes
 - Validate basic data shapes before saving
 
 ## Timer State Machine

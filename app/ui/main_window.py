@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import time
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Callable
 
 try:
@@ -42,7 +42,7 @@ from app.core.timer import (
     TimerStateError,
     WorkTimer,
 )
-from app.data.models import AppSettings, BreakRecord
+from app.data.models import AppSettings, BreakRecord, WorkSessionRecord
 from app.data.storage import JsonStorage, StorageError
 from app.ui.animation import (
     LOTTIE_WEB_PLAYER_PATH,
@@ -158,6 +158,7 @@ class MainWindow:
         self._startup_storage_message: str | None = None
         (
             self._session_break_records,
+            self._session_work_records,
             initial_work_minutes,
             stored_interval_minutes,
         ) = self._load_startup_data()
@@ -180,6 +181,8 @@ class MainWindow:
         self._reminder_dialog_open = False
         self._date_rollover_pending = False
         self._last_valid_interval_minutes = self.timer.break_interval_minutes
+        self._active_work_session_start_time: datetime | None = None
+        self._active_work_session_seconds = 0
         self._state_animation_movie: QMovie | None = None
         self._state_animation_state: TimerState | None = None
         self._state_animation_mode: str | None = None
@@ -208,24 +211,25 @@ class MainWindow:
     def _current_date(self) -> str:
         return self._date_provider().isoformat()
 
-    def _load_startup_data(self) -> tuple[list[BreakRecord], int, int]:
+    def _load_startup_data(self) -> tuple[list[BreakRecord], list[WorkSessionRecord], int, int]:
         settings_interval = AppSettings().break_interval_minutes
         try:
             settings_interval = self.storage.load_settings().break_interval_minutes
             records = self.storage.list_break_records(self.today)
+            work_records = self.storage.list_work_session_records(self.today)
             work_minutes = self.storage.get_work_minutes(self.today)
         except (StorageError, ValueError) as exc:
             self._startup_storage_message = (
                 "讀取今日資料時發生問題，已先用 0 初始化畫面。\n"
                 f"原因：{exc}"
             )
-            return [], 0, settings_interval
+            return [], [], 0, settings_interval
 
         recovery_message = self.storage.consume_recovery_message()
         if recovery_message:
             self._startup_storage_message = recovery_message
 
-        return records, work_minutes, settings_interval
+        return records, work_records, work_minutes, settings_interval
 
     def _show_startup_storage_message(self) -> None:
         if not self._startup_storage_message:
@@ -486,7 +490,9 @@ class MainWindow:
         self.start_button.setObjectName("PrimaryButton")
         self.start_button.clicked.connect(self._on_start_work)
         self.pause_button = QPushButton("暫停")
-        self.pause_button.clicked.connect(lambda: self._run_timer_action(self.timer.pause))
+        self.pause_button.clicked.connect(
+            lambda: self._run_timer_action(self.timer.pause, ended_by="pause")
+        )
         self.restart_button = QPushButton("重新開始")
         self.restart_button.clicked.connect(self._on_restart_countdown)
         self.snooze_button = QPushButton("延後 5 分鐘")
@@ -575,17 +581,21 @@ class MainWindow:
         if current_date == self.today:
             return False
 
+        self._advance_timer_to_now(render=False, show_reminder=False)
         snapshot = self.timer.snapshot()
         if snapshot.state == TimerState.BREAKING or self._pending_break is not None:
             self._date_rollover_pending = True
             return False
 
+        if snapshot.state in {TimerState.WORKING, TimerState.REMINDER}:
+            self._end_active_work_session("day_rollover")
         self._save_work_minutes_if_needed(force=True)
         self.today = current_date
         self._date_rollover_pending = False
 
         try:
             self._session_break_records = self.storage.list_break_records(self.today)
+            self._session_work_records = self.storage.list_work_session_records(self.today)
             work_minutes = self.storage.get_work_minutes(self.today)
         except (StorageError, ValueError) as exc:
             QMessageBox.warning(
@@ -594,6 +604,7 @@ class MainWindow:
                 f"切換到新的一天時讀取資料失敗，今日統計將先從 0 開始。\n原因：{exc}",
             )
             self._session_break_records = []
+            self._session_work_records = []
             work_minutes = 0
 
         self.timer.reset_day(
@@ -603,6 +614,8 @@ class MainWindow:
         self._last_saved_work_date = self.today
         self._last_saved_work_minutes = work_minutes
         self._last_tick_monotonic = time.monotonic()
+        self._active_work_session_start_time = None
+        self._active_work_session_seconds = 0
         self._reminder_prompted_for_current_round = False
         self._render(self.timer.snapshot())
         return True
@@ -681,7 +694,132 @@ class MainWindow:
         )
         self._restore_interval_input()
 
+    def _advance_timer_to_now(
+        self,
+        render: bool = True,
+        show_reminder: bool = True,
+    ) -> TimerSnapshot:
+        now = time.monotonic()
+        elapsed_seconds = int(now - self._last_tick_monotonic)
+        if elapsed_seconds <= 0:
+            return self.timer.snapshot()
+
+        previous_snapshot = self.timer.snapshot()
+        self._last_tick_monotonic += elapsed_seconds
+        snapshot = self.timer.tick(elapsed_seconds)
+        self._sync_work_session_transition(previous_snapshot, snapshot)
+        if render:
+            self._render(snapshot)
+        self._save_work_minutes_if_needed()
+        if show_reminder:
+            self._maybe_show_reminder_dialog(snapshot)
+        return snapshot
+
+    def _sync_work_session_transition(
+        self,
+        previous_snapshot: TimerSnapshot,
+        current_snapshot: TimerSnapshot,
+        ended_by: str = "unknown",
+        restart_work_session: bool = False,
+    ) -> None:
+        work_delta = (
+            current_snapshot.total_work_seconds
+            - previous_snapshot.total_work_seconds
+        )
+        if previous_snapshot.state == TimerState.WORKING and work_delta > 0:
+            self._add_active_work_seconds(work_delta)
+
+        previous_state = previous_snapshot.state
+        current_state = current_snapshot.state
+        active_session_states = {TimerState.WORKING, TimerState.REMINDER}
+
+        if restart_work_session and current_state == TimerState.WORKING:
+            if previous_state in active_session_states:
+                self._end_active_work_session(ended_by)
+            self._begin_active_work_session()
+            return
+
+        if (
+            previous_state == TimerState.WORKING
+            and current_state == TimerState.REMINDER
+        ):
+            return
+
+        if (
+            previous_state == TimerState.REMINDER
+            and current_state == TimerState.WORKING
+        ):
+            return
+
+        if (
+            previous_state in active_session_states
+            and current_state not in active_session_states
+        ):
+            self._end_active_work_session(ended_by)
+            return
+
+        if (
+            previous_state not in active_session_states
+            and current_state == TimerState.WORKING
+        ):
+            self._begin_active_work_session()
+
+    def _begin_active_work_session(self) -> None:
+        if self._active_work_session_start_time is not None:
+            return
+
+        self._active_work_session_start_time = self._session_timestamp()
+        self._active_work_session_seconds = 0
+
+    def _add_active_work_seconds(self, seconds: int) -> None:
+        if self._active_work_session_start_time is None:
+            self._begin_active_work_session()
+        self._active_work_session_seconds += max(0, int(seconds))
+
+    def _end_active_work_session(self, ended_by: str) -> None:
+        if self._active_work_session_start_time is None:
+            return
+
+        duration_seconds = max(0, int(self._active_work_session_seconds))
+        duration_minutes = duration_seconds // 60
+        start_time = self._active_work_session_start_time
+        self._active_work_session_start_time = None
+        self._active_work_session_seconds = 0
+
+        if duration_minutes < 1:
+            return
+
+        record = WorkSessionRecord.create(
+            start_time=start_time,
+            end_time=start_time + timedelta(seconds=duration_seconds),
+            duration_minutes=duration_minutes,
+            ended_by=ended_by,
+        )
+
+        try:
+            self.storage.add_work_session_record(record)
+        except (StorageError, ValueError) as exc:
+            QMessageBox.warning(self.window, "å·¥ä½œå€æ®µä¿å­˜å¤±æ•—", str(exc))
+            return
+
+        if record.date == self.today:
+            self._session_work_records.append(record)
+
+    def _session_timestamp(self) -> datetime:
+        try:
+            current_day = date.fromisoformat(self.today)
+        except ValueError:
+            return datetime.now().replace(microsecond=0)
+
+        return datetime.combine(
+            current_day,
+            datetime.now().time(),
+        ).replace(microsecond=0)
+
     def _on_window_close(self, event) -> None:  # type: ignore[no-untyped-def]
+        self._advance_timer_to_now(render=False, show_reminder=False)
+        if self.timer.snapshot().state in {TimerState.WORKING, TimerState.REMINDER}:
+            self._end_active_work_session("unknown")
         self._stop_state_animation()
         self._save_work_minutes_if_needed(force=True, show_errors=True)
         event.accept()
@@ -690,16 +828,7 @@ class MainWindow:
         if self._check_date_rollover():
             return
 
-        now = time.monotonic()
-        elapsed_seconds = int(now - self._last_tick_monotonic)
-        if elapsed_seconds <= 0:
-            return
-
-        self._last_tick_monotonic += elapsed_seconds
-        snapshot = self.timer.tick(elapsed_seconds)
-        self._render(snapshot)
-        self._save_work_minutes_if_needed()
-        self._maybe_show_reminder_dialog(snapshot)
+        self._advance_timer_to_now(render=True, show_reminder=True)
 
     def _on_start_work(self) -> None:
         self._check_date_rollover()
@@ -746,7 +875,11 @@ class MainWindow:
                 return
             interval_minutes = self._last_valid_interval_minutes
 
-        if self._run_timer_action(lambda: self.timer.restart_countdown(interval_minutes)):
+        if self._run_timer_action(
+            lambda: self.timer.restart_countdown(interval_minutes),
+            ended_by="restart",
+            restart_work_session=True,
+        ):
             self._last_valid_interval_minutes = interval_minutes
 
     def _resume_work_after_pause(self) -> bool:
@@ -780,11 +913,11 @@ class MainWindow:
             snapshot = self.timer.snapshot()
 
         if snapshot.state == TimerState.REMINDER:
-            if self._run_timer_action(self.timer.start_break):
+            if self._run_timer_action(self.timer.start_break, ended_by="break"):
                 self._restore_invalid_interval_after_action()
             return
 
-        self._run_timer_action(self.timer.start_break_early)
+        self._run_timer_action(self.timer.start_break_early, ended_by="early_break")
 
     def _maybe_show_reminder_dialog(self, snapshot: TimerSnapshot) -> None:
         if snapshot.state != TimerState.REMINDER:
@@ -826,7 +959,13 @@ class MainWindow:
         elif action == ReminderAction.RESTART:
             self._on_restart_countdown()
 
-    def _run_timer_action(self, action: Callable[[], object]) -> bool:
+    def _run_timer_action(
+        self,
+        action: Callable[[], object],
+        ended_by: str = "unknown",
+        restart_work_session: bool = False,
+    ) -> bool:
+        previous_snapshot = self.timer.snapshot()
         try:
             action()
         except (TimerStateError, ValueError) as exc:
@@ -836,6 +975,12 @@ class MainWindow:
         self._last_tick_monotonic = time.monotonic()
         self._save_work_minutes_if_needed(force=True)
         snapshot = self.timer.snapshot()
+        self._sync_work_session_transition(
+            previous_snapshot,
+            snapshot,
+            ended_by=ended_by,
+            restart_work_session=restart_work_session,
+        )
         self._render(snapshot)
         self._maybe_show_reminder_dialog(snapshot)
         return True
@@ -862,16 +1007,25 @@ class MainWindow:
                 return
 
         try:
+            if self.timer.snapshot().state in {TimerState.WORKING, TimerState.REMINDER}:
+                self._end_active_work_session("end_day")
             self._save_work_minutes_if_needed(force=True)
             statistics = calculate_daily_statistics(
                 date=self.today,
                 work_minutes=self.timer.snapshot().total_work_seconds // 60,
                 break_records=self._session_break_records,
+                work_session_records=self._session_work_records,
             )
             summary = create_daily_summary(statistics)
             self.storage.set_work_minutes(self.today, summary.work_minutes)
             self.storage.save_daily_summary(summary)
+            previous_snapshot = self.timer.snapshot()
             self.timer.end_day()
+            self._sync_work_session_transition(
+                previous_snapshot,
+                self.timer.snapshot(),
+                ended_by="end_day",
+            )
         except (StorageError, TimerStateError, ValueError) as exc:
             QMessageBox.critical(self.window, "結束今天失敗", str(exc))
             return
@@ -1006,6 +1160,7 @@ class MainWindow:
             date=self.today,
             work_minutes=snapshot.total_work_seconds // 60,
             break_records=self._session_break_records,
+            work_session_records=self._session_work_records,
         )
         self.work_total_value.setText(_format_minutes(stats.work_minutes))
         self.break_total_value.setText(_format_minutes(stats.break_minutes))

@@ -14,6 +14,7 @@ BASIC_DAILY_WATER_ML = 1500
 IDEAL_DAILY_WATER_ML = 2000
 AWAKE_HOURS_PER_DAY = 16
 MIN_WORK_MINUTES_FOR_WATER_SCORING = 30
+MIN_WORK_MINUTES_FOR_HEALTH_SCORE = 30
 
 WORK_SESSION_TARGET_MINUTES = 60
 WORK_SESSION_MINOR_LIMIT_MINUTES = 90
@@ -21,8 +22,11 @@ WORK_SESSION_MAJOR_LIMIT_MINUTES = 120
 BREAK_MINUTES_PER_WORK_HOUR = 5
 
 
-def calculate_health_score(statistics: DailyStatistics) -> int:
+def calculate_health_score(statistics: DailyStatistics) -> int | None:
     """Calculate the health score using proportional water and rest rules."""
+
+    if statistics.work_minutes < MIN_WORK_MINUTES_FOR_HEALTH_SCORE:
+        return None
 
     score = BASE_HEALTH_SCORE
     score += calculate_water_score_delta(statistics)
@@ -91,13 +95,16 @@ def calculate_break_volume_score_delta(statistics: DailyStatistics) -> int:
 def generate_health_suggestions(statistics: DailyStatistics) -> list[str]:
     """Generate concrete rule-based health suggestions."""
 
-    return [
+    suggestions = [
         _build_water_suggestion(statistics),
         _build_work_session_suggestion(statistics),
         _build_break_volume_suggestion(statistics),
         "眼睛休息可以採用 20-20-20：每 20 分鐘看向遠方 20 秒。",
         "休息時建議伸展肩頸、起身走動，順手補充水分。",
     ]
+    if 0 < statistics.work_minutes < MIN_WORK_MINUTES_FOR_HEALTH_SCORE:
+        suggestions.insert(0, "今日工作紀錄較短，先不產生正式健康分數。")
+    return suggestions
 
 
 def create_daily_summary(statistics: DailyStatistics) -> DailySummary:
@@ -115,6 +122,7 @@ def create_daily_summary(statistics: DailyStatistics) -> DailySummary:
         ideal_water_target_ml=statistics.ideal_water_target_ml,
         recommended_break_minutes=statistics.recommended_break_minutes,
         longest_work_session_minutes=statistics.longest_work_session_minutes,
+        work_session_count=statistics.work_session_count,
         suggestions=generate_health_suggestions(statistics),
     )
 
