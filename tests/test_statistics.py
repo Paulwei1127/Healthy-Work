@@ -32,3 +32,6 @@ def test_daily_statistics_only_counts_records_for_target_date() -> None:
     assert statistics.break_count == 1
     assert statistics.water_ml == 200
     assert statistics.average_work_session_minutes == 45
+    assert statistics.basic_water_target_ml == 70
+    assert statistics.ideal_water_target_ml == 94
+    assert statistics.recommended_break_minutes == 4

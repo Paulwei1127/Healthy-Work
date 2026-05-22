@@ -43,6 +43,16 @@ The main timer card and the break reminder dialog prefer Lottie JSON animations 
 
 When packaging with PyInstaller, include the full `gif/` folder, including `gif/json/lottie.min.js`, all Lottie JSON files, and all GIF fallback files.
 
+## Health Scoring
+
+The health score uses rule-based local logic, without an AI API.
+
+- Water targets scale with recorded work time instead of using one fixed daily threshold. The basic target is `1500 ml / 16 waking hours` (about 94 ml per work hour), and the ideal target is `2000 ml / 16 waking hours` (125 ml per work hour). There is no daily cap; long workdays scale proportionally.
+- Very short work sessions under 30 minutes do not receive a heavy water penalty.
+- The rest rhythm goal is to avoid continuous work sessions longer than 60 minutes. The data model now includes a future-ready `WorkSessionRecord`, but the MVP does not yet persist exact work sessions from the timer. Until that is wired in, reports clearly describe this part as an estimate based on `average_work_session_minutes`.
+- Total break time is a secondary target based on work duration: at least 5 minutes of break time per recorded work hour.
+- Suggestions include the recorded work duration, basic and ideal water targets, actual water intake, estimated work rhythm, and proportional break-time target.
+
 ## Test
 
 ```powershell

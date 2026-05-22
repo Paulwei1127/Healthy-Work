@@ -18,6 +18,10 @@ class DailyStatistics:
     break_count: int
     water_ml: int
     average_work_session_minutes: float | None
+    basic_water_target_ml: int
+    ideal_water_target_ml: int
+    recommended_break_minutes: int
+    longest_work_session_minutes: int | None = None
 
 
 def calculate_work_minutes(work_minutes: int) -> int:
@@ -59,6 +63,27 @@ def calculate_average_work_session_minutes(
     return round(normalized_work_minutes / normalized_break_count, 2)
 
 
+def calculate_basic_water_target_ml(work_minutes: int) -> int:
+    """Return the proportional basic water target for recorded work time."""
+
+    normalized_work_minutes = calculate_work_minutes(work_minutes)
+    return round((normalized_work_minutes / 60) * 1500 / 16)
+
+
+def calculate_ideal_water_target_ml(work_minutes: int) -> int:
+    """Return the proportional ideal water target for recorded work time."""
+
+    normalized_work_minutes = calculate_work_minutes(work_minutes)
+    return round((normalized_work_minutes / 60) * 2000 / 16)
+
+
+def calculate_recommended_break_minutes(work_minutes: int) -> int:
+    """Return recommended total break minutes: at least 5 minutes per work hour."""
+
+    normalized_work_minutes = calculate_work_minutes(work_minutes)
+    return round((normalized_work_minutes / 60) * 5)
+
+
 def calculate_daily_statistics(
     date: str,
     work_minutes: int,
@@ -80,6 +105,11 @@ def calculate_daily_statistics(
         average_work_session_minutes=calculate_average_work_session_minutes(
             normalized_work_minutes,
             break_count,
+        ),
+        basic_water_target_ml=calculate_basic_water_target_ml(normalized_work_minutes),
+        ideal_water_target_ml=calculate_ideal_water_target_ml(normalized_work_minutes),
+        recommended_break_minutes=calculate_recommended_break_minutes(
+            normalized_work_minutes
         ),
     )
 

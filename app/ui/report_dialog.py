@@ -157,6 +157,9 @@ class ReportDialog:
             ("休息次數", f"{self.summary.break_count} 次"),
             ("平均工作時長", _format_average_work(self.summary)),
             ("喝水總量", f"{self.summary.water_ml} ml"),
+            ("基本喝水目標", f"{self.summary.basic_water_target_ml} ml"),
+            ("理想喝水目標", f"{self.summary.ideal_water_target_ml} ml"),
+            ("建議休息總量", _format_minutes(self.summary.recommended_break_minutes)),
         ]
         for index, (label, value) in enumerate(metrics):
             _add_metric(metrics_layout, label, value, index // 2, index % 2)
@@ -198,6 +201,9 @@ def format_daily_summary_report(summary: DailySummary) -> str:
             f"休息次數：{summary.break_count} 次",
             f"平均每次工作時長：{average_work}",
             f"喝水總量：{summary.water_ml} ml",
+            f"基本喝水目標：{summary.basic_water_target_ml} ml",
+            f"理想喝水目標：{summary.ideal_water_target_ml} ml",
+            f"建議休息總量：{_format_minutes(summary.recommended_break_minutes)}",
             f"健康度評分：{summary.health_score} / 100",
             "",
             "建議：",

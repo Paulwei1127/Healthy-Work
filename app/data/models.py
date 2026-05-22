@@ -35,6 +35,16 @@ def _coerce_optional_float(value: Any, field_name: str) -> float | None:
         raise ValueError(f"{field_name} must be a number or None.") from exc
 
 
+def _coerce_optional_int(
+    value: Any,
+    field_name: str,
+    min_value: int | None = None,
+) -> int | None:
+    if value is None:
+        return None
+    return _coerce_int(value, field_name, min_value=min_value)
+
+
 def _required_string(value: Any, field_name: str) -> str:
     if value is None:
         raise ValueError(f"{field_name} is required.")
@@ -126,6 +136,69 @@ class BreakRecord:
 
 
 @dataclass
+class WorkSessionRecord:
+    """Future-ready record for one continuous work session."""
+
+    id: str
+    date: str
+    start_time: str
+    end_time: str
+    duration_minutes: int
+    ended_by: str = "unknown"
+
+    def __post_init__(self) -> None:
+        self.id = _required_string(self.id, "id")
+        self.date = _required_string(self.date, "date")
+        self.start_time = _required_string(self.start_time, "start_time")
+        self.end_time = _required_string(self.end_time, "end_time")
+        self.duration_minutes = _coerce_int(
+            self.duration_minutes, "duration_minutes", min_value=0
+        )
+        self.ended_by = _optional_string(self.ended_by) or "unknown"
+
+    @classmethod
+    def create(
+        cls,
+        start_time: datetime,
+        end_time: datetime,
+        duration_minutes: int,
+        ended_by: str = "unknown",
+    ) -> "WorkSessionRecord":
+        return cls(
+            id=str(uuid4()),
+            date=start_time.date().isoformat(),
+            start_time=start_time.isoformat(timespec="seconds"),
+            end_time=end_time.isoformat(timespec="seconds"),
+            duration_minutes=duration_minutes,
+            ended_by=ended_by,
+        )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "WorkSessionRecord":
+        if not isinstance(data, dict):
+            raise ValueError("WorkSessionRecord data must be a dictionary.")
+
+        return cls(
+            id=data.get("id"),
+            date=data.get("date"),
+            start_time=data.get("start_time"),
+            end_time=data.get("end_time"),
+            duration_minutes=data.get("duration_minutes", 0),
+            ended_by=data.get("ended_by", "unknown"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "date": self.date,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "duration_minutes": self.duration_minutes,
+            "ended_by": self.ended_by,
+        }
+
+
+@dataclass
 class DailySummary:
     """A saved end-of-day summary."""
 
@@ -136,6 +209,10 @@ class DailySummary:
     water_ml: int
     average_work_session_minutes: float | None
     health_score: int
+    basic_water_target_ml: int = 0
+    ideal_water_target_ml: int = 0
+    recommended_break_minutes: int = 0
+    longest_work_session_minutes: int | None = None
     suggestions: list[str] = field(default_factory=list)
     created_at: str = field(default_factory=_iso_now)
 
@@ -153,6 +230,22 @@ class DailySummary:
         self.health_score = _coerce_int(self.health_score, "health_score", min_value=0)
         if self.health_score > 100:
             raise ValueError("health_score must be between 0 and 100.")
+        self.basic_water_target_ml = _coerce_int(
+            self.basic_water_target_ml, "basic_water_target_ml", min_value=0
+        )
+        self.ideal_water_target_ml = _coerce_int(
+            self.ideal_water_target_ml, "ideal_water_target_ml", min_value=0
+        )
+        self.recommended_break_minutes = _coerce_int(
+            self.recommended_break_minutes,
+            "recommended_break_minutes",
+            min_value=0,
+        )
+        self.longest_work_session_minutes = _coerce_optional_int(
+            self.longest_work_session_minutes,
+            "longest_work_session_minutes",
+            min_value=0,
+        )
 
         if not isinstance(self.suggestions, list):
             raise ValueError("suggestions must be a list.")
@@ -172,6 +265,10 @@ class DailySummary:
             water_ml=data.get("water_ml", 0),
             average_work_session_minutes=data.get("average_work_session_minutes"),
             health_score=data.get("health_score", 0),
+            basic_water_target_ml=data.get("basic_water_target_ml", 0),
+            ideal_water_target_ml=data.get("ideal_water_target_ml", 0),
+            recommended_break_minutes=data.get("recommended_break_minutes", 0),
+            longest_work_session_minutes=data.get("longest_work_session_minutes"),
             suggestions=data.get("suggestions", []),
             created_at=data.get("created_at", _iso_now()),
         )
@@ -185,6 +282,10 @@ class DailySummary:
             "water_ml": self.water_ml,
             "average_work_session_minutes": self.average_work_session_minutes,
             "health_score": self.health_score,
+            "basic_water_target_ml": self.basic_water_target_ml,
+            "ideal_water_target_ml": self.ideal_water_target_ml,
+            "recommended_break_minutes": self.recommended_break_minutes,
+            "longest_work_session_minutes": self.longest_work_session_minutes,
             "suggestions": list(self.suggestions),
             "created_at": self.created_at,
         }
