@@ -1,39 +1,41 @@
-# Healthy Work App
+# Healthy Work App 健康工作提醒工具
 
-Healthy Work App is a small Windows desktop app for healthier work habits. It helps you run focused work countdowns, receive break reminders, record breaks and water intake, and review a simple end-of-day health report.
+[English](README.en.md)
 
-The app is built with Python, PyQt5, local JSON storage, and optional Lottie animations through PyQtWebEngine. It does not require a cloud account and does not use an AI API.
+Healthy Work App 是一個 Windows 桌面小工具，用來幫助你維持比較健康的工作節奏。它可以進行工作倒數、提醒休息、記錄休息與喝水量，並在一天結束時產生簡單的健康工作報告。
 
-## Features
+這個專案使用 Python、PyQt5、本機 JSON 儲存，以及透過 PyQtWebEngine 播放的 Lottie 動畫。資料都存在使用者自己的電腦，不需要雲端帳號，也不使用 AI API。
 
-- Work countdown timer with configurable break reminder interval.
-- Pause, restart countdown, early break, snooze reminder, and end-day actions.
-- Active break reminder dialog when the countdown reaches zero.
-- Break timer with completed break records.
-- Water intake and optional note entry after a break.
-- Today dashboard for work time, break time, break count, water total, current break, and last break.
-- End-of-day report with health score and rule-based suggestions.
-- Local work session records for detecting long continuous work sessions.
-- State-based cat animations, using Lottie JSON first and GIF fallback when needed.
-- Local JSON storage with basic validation and invalid-file backup.
+## 功能
 
-## Download And Use
+- 可調整休息提醒間隔的工作倒數計時器。
+- 支援暫停、重新開始倒數、提前休息、延後提醒，以及結束今天。
+- 倒數時間到時顯示主動休息提醒視窗。
+- 休息期間自動計時，休息結束後可儲存休息紀錄。
+- 可記錄喝水量與休息備註。
+- 今日統計包含工作時間、休息時間、休息次數、喝水總量、目前休息時間與上次休息時間。
+- 結束今天後產生健康工作報告與規則式建議。
+- 記錄工作區段，用來判斷是否有連續工作過久的情況。
+- 依照狀態播放不同貓咪動畫，優先使用 Lottie JSON，必要時退回 GIF。
+- 使用本機 JSON 儲存資料，並具備基本資料驗證與壞檔備份機制。
 
-For normal users, the recommended distribution format is a Windows portable ZIP release.
+## 下載與使用
 
-1. Open this repository's **Releases** page.
-2. Download the latest Windows `.zip` file from the release assets.
-3. Extract the full ZIP folder before running the app.
-4. Double-click the `.exe` file inside the extracted folder.
-5. Keep the extracted folder contents together. The executable depends on bundled resource files such as animations.
+一般使用者建議下載 Windows 免安裝 ZIP 版本。
 
-The ZIP version is portable and does not need installation. To remove it, close the app and delete the extracted folder.
+1. 打開本專案的 **Releases** 頁面。
+2. 下載最新版本的 Windows `.zip` 檔。
+3. 先完整解壓縮 ZIP，不要直接在壓縮檔裡執行。
+4. 雙擊解壓後資料夾中的 `.exe`。
+5. 請保持整個資料夾內容完整，執行檔需要同資料夾內的 runtime 與動畫資源。
 
-Windows may show a SmartScreen warning for unsigned builds. That warning can appear even when the app is not malicious; it means the executable has not been code-signed by a trusted publisher.
+ZIP 版本不需要安裝。若要移除，關閉 App 後刪除整個解壓縮資料夾即可。
 
-## Run From Source
+未簽章的 Windows 執行檔可能會出現 SmartScreen 提醒。這不一定代表程式有問題，只是代表它尚未經過可信任發行者的程式碼簽章。
 
-From the repository root:
+## 從原始碼執行
+
+在專案根目錄執行：
 
 ```powershell
 py -m venv .venv
@@ -41,96 +43,106 @@ py -m venv .venv
 .\.venv\Scripts\python.exe -m app.main
 ```
 
-If your global Python environment already has the dependencies installed, this also works:
+如果你的全域 Python 環境已經安裝好相依套件，也可以直接執行：
 
 ```powershell
 python -m app.main
 ```
 
-## Health Scoring
+## 健康評分規則
 
-The health score uses rule-based local logic.
+健康評分使用本機規則式邏輯，不依賴雲端或 AI。
 
-- Formal health scores are shown only when there is enough work data.
-- If no work has been recorded, the report shows `今天尚未工作`.
-- If recorded work is under 30 minutes, the report shows `資料較少，暫不評分`.
-- At 30 minutes or more, the report shows the normal `X / 100` score.
-- Water targets scale with recorded work time instead of using one fixed daily threshold.
-- The basic water target is `1500 ml / 16 waking hours`, about 94 ml per work hour.
-- The ideal water target is `2000 ml / 16 waking hours`, 125 ml per work hour.
-- There is no daily cap; long workdays scale proportionally.
-- The rest rhythm goal is to avoid any continuous work session longer than 60 minutes.
-- Total break time is a secondary target based on at least 5 minutes of break time per recorded work hour.
-- Older saved summaries may still contain a numeric score, but reports apply the current display rule first to avoid misleading scores.
+- 工作資料足夠時才會顯示正式分數。
+- 如果今天尚未記錄工作，報告會顯示 `今天尚未工作`。
+- 如果記錄工作未滿 30 分鐘，報告會顯示 `資料較少，暫不評分`。
+- 工作時間達 30 分鐘以上時，報告會顯示一般的 `X / 100` 分數。
+- 喝水目標會依照已記錄的工作時間等比例計算，而不是套用固定全天門檻。
+- 基本喝水目標為 `1500 ml / 16 小時清醒時間`，約每工作小時 94 ml。
+- 理想喝水目標為 `2000 ml / 16 小時清醒時間`，約每工作小時 125 ml。
+- 目標沒有每日上限；如果工作時間更長，目標會繼續等比例提高。
+- 休息節奏的核心目標是避免連續工作超過 60 分鐘。
+- 休息總量是次要目標，建議每工作 1 小時至少休息 5 分鐘。
+- 舊資料即使保存了數字分數，報告仍會優先套用目前顯示規則，避免在資料不足時顯示誤導性的分數。
 
-## Animation Assets
+## 動畫資源
 
-The main timer card uses different animations for each state:
+主視窗倒數卡片會依照狀態播放不同動畫：
 
-- Idle: `paws animation`
-- Working: `rolling cat animation`
-- Paused: `Loading Cat`
-- Reminder: `Le Petit Chat _Cat_ Noir`
-- Breaking: `Cat playing animation`
-- Day ended: `Cat is sleeping and rolling`
+- 尚未開始：`paws animation`
+- 工作中：`rolling cat animation`
+- 已暫停：`Loading Cat`
+- 提醒時間到：`Le Petit Chat _Cat_ Noir`
+- 休息中：`Cat playing animation`
+- 今日已結束：`Cat is sleeping and rolling`
 
-The app tries to play Lottie JSON files from `gif/json` first. If PyQtWebEngine, the local `lottie.min.js` player, or a JSON animation is unavailable, it falls back to GIF files from `gif`.
+App 會優先播放 `gif/json` 裡的 Lottie JSON 檔。若 PyQtWebEngine、本機 `lottie.min.js` 或 JSON 動畫不可用，會退回使用 `gif` 資料夾中的 GIF。
 
-## Data Storage
+## 資料儲存
 
-The app stores local records in `data/daily_records.json` during source runs.
+從原始碼執行時，資料會存在：
 
-Stored data includes:
+```text
+data/daily_records.json
+```
 
-- App settings.
-- Break records.
-- Work session records.
-- Daily summaries.
-- Per-day work minutes.
+打包成 Windows 免安裝版後，資料會存在執行檔旁邊：
 
-This file contains user activity data and should not be committed to GitHub. The repository keeps `data/.gitkeep` only so the data folder exists.
+```text
+HealthyWork/data/daily_records.json
+```
 
-## Packaging Notes
+儲存內容包含：
 
-For the first public build, use a Windows portable ZIP created from a PyInstaller `onedir` build. Avoid `onefile` until resource loading and data persistence are fully verified.
+- App 設定。
+- 休息紀錄。
+- 工作區段紀錄。
+- 每日摘要。
+- 每日工作分鐘數。
 
-The packaged app must include:
+`daily_records.json` 會包含使用者活動資料，不應提交到 GitHub。版本庫只保留 `data/.gitkeep`，用來讓資料夾存在。
 
-- The executable.
-- PyQt5 and PyQtWebEngine runtime files.
-- The full `gif/` folder.
-- `gif/json/lottie.min.js`.
-- All Lottie JSON files.
-- All GIF fallback files.
+## 打包注意事項
 
-Before publishing a release, verify:
+第一版公開發佈建議使用 PyInstaller 的 `onedir` 模式產生 Windows 免安裝資料夾，再壓成 ZIP。正式確認資源路徑與資料保存都沒問題前，不建議優先使用 `onefile`。
 
-- The app opens by double-clicking the executable.
-- Lottie animation plays when PyQtWebEngine is available.
-- GIF fallback works if Lottie cannot load.
-- Work countdown, pause, reminder, snooze, break, and end-day flows work.
-- Break records and water records persist after closing and reopening the app.
-- End-of-day report opens and displays friendly missing-data text instead of `N/A`.
+打包成品需要包含：
 
-GitHub should store source code in the repository and packaged ZIP files in **GitHub Releases**. Do not commit generated `.exe`, `.zip`, local user records, virtual environments, or Python cache files.
+- 執行檔。
+- PyQt5 與 PyQtWebEngine runtime。
+- 完整的 `gif/` 資料夾。
+- `gif/json/lottie.min.js`。
+- 所有 Lottie JSON 檔。
+- 所有 GIF fallback 檔。
 
-## Development
+發佈前請確認：
 
-Install dependencies:
+- 雙擊執行檔可以開啟 App。
+- PyQtWebEngine 可用時能播放 Lottie 動畫。
+- Lottie 不可用時能退回 GIF。
+- 工作倒數、暫停、提醒、延後提醒、休息與結束今天流程正常。
+- 關閉並重新開啟後，休息紀錄與喝水紀錄能保留。
+- 結束今天報告能開啟，並顯示友善文字，而不是 `N/A`。
+
+GitHub repository 應保存原始碼；打包後的 ZIP 應放在 **GitHub Releases**。不要把 `.exe`、`.zip`、本機使用者資料、虛擬環境或 Python cache 檔提交到版本庫。
+
+## 開發
+
+安裝相依套件：
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Run tests:
+執行測試：
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Current test coverage includes timer state transitions, storage behavior, statistics, scoring rules, reminder flow, animation fallback behavior, and main UI persistence flows.
+目前測試涵蓋 timer 狀態轉換、資料儲存、統計、評分規則、提醒流程、動畫 fallback，以及主要 UI 的保存流程。
 
-## Project Structure
+## 專案結構
 
 ```text
 app/
@@ -153,9 +165,10 @@ gif/
   json/
 tests/
 README.md
+README.en.md
 requirements.txt
 ```
 
-## Platform Notes
+## 平台說明
 
-The current project is developed on Windows. Source execution on macOS or Linux may be possible if PyQt5 and PyQtWebEngine are installed correctly, but packaged builds for those platforms have not been verified yet. For public distribution, prepare and test one build per operating system.
+目前專案是在 Windows 環境下開發與打包。只要 PyQt5 與 PyQtWebEngine 安裝正確，原始碼理論上可能在 macOS 或 Linux 執行，但這兩個平台的打包成品尚未驗證。若要公開支援不同作業系統，建議每個平台各自打包並實機測試。
