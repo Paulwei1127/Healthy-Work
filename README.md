@@ -80,6 +80,8 @@ python -m app.main
 
 App 會優先播放 `gif/json` 裡的 Lottie JSON 檔。若 PyQtWebEngine、本機 `lottie.min.js` 或 JSON 動畫不可用，會退回使用 `gif` 資料夾中的 GIF。
 
+動畫素材與 Lottie 播放函式庫的來源、作者與授權資訊記錄在 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
 ## 資料儲存
 
 從原始碼執行時，資料會存在：

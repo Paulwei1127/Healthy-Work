@@ -80,6 +80,8 @@ The main timer card uses different animations for each state:
 
 The app tries to play Lottie JSON files from `gif/json` first. If PyQtWebEngine, the local `lottie.min.js` player, or a JSON animation is unavailable, it falls back to GIF files from `gif`.
 
+Source, creator, and license information for animation assets and the bundled Lottie player are recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ## Data Storage
 
 When running from source, records are stored in:
