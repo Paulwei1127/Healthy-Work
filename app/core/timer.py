@@ -12,6 +12,8 @@ from typing import Callable
 DEFAULT_BREAK_INTERVAL_MINUTES = 45
 SNOOZE_MINUTES = 5
 SECONDS_PER_MINUTE = 60
+MAX_RECORDED_BREAK_MINUTES = 60
+MAX_RECORDED_BREAK_SECONDS = MAX_RECORDED_BREAK_MINUTES * SECONDS_PER_MINUTE
 
 
 class TimerState(str, Enum):
@@ -37,6 +39,9 @@ class CompletedBreak:
     end_time: datetime
     duration_seconds: int
     duration_minutes: int
+    actual_duration_seconds: int | None = None
+    actual_duration_minutes: int | None = None
+    was_duration_capped: bool = False
 
 
 @dataclass(frozen=True)
@@ -235,12 +240,16 @@ class WorkTimer:
             0,
             int((break_end_time - self._break_start_time).total_seconds()),
         )
-        duration_seconds = max(wall_clock_seconds, self._break_elapsed_seconds)
+        actual_duration_seconds = max(wall_clock_seconds, self._break_elapsed_seconds)
+        duration_seconds = min(actual_duration_seconds, MAX_RECORDED_BREAK_SECONDS)
         completed_break = CompletedBreak(
             start_time=self._break_start_time,
             end_time=break_end_time,
             duration_seconds=duration_seconds,
             duration_minutes=_seconds_to_minutes_ceiling(duration_seconds),
+            actual_duration_seconds=actual_duration_seconds,
+            actual_duration_minutes=_seconds_to_minutes_ceiling(actual_duration_seconds),
+            was_duration_capped=actual_duration_seconds > MAX_RECORDED_BREAK_SECONDS,
         )
 
         self._last_completed_break = completed_break

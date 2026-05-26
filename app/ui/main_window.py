@@ -37,6 +37,7 @@ from app.core.scoring import create_daily_summary
 from app.core.statistics import calculate_daily_statistics
 from app.core.timer import (
     CompletedBreak,
+    MAX_RECORDED_BREAK_MINUTES,
     TimerSnapshot,
     TimerState,
     TimerStateError,
@@ -902,6 +903,7 @@ class MainWindow:
         self._pending_break = completed_break
         self._last_tick_monotonic = time.monotonic()
         self._render(self.timer.snapshot())
+        self._maybe_show_capped_break_notice(completed_break)
         return self._show_break_record_dialog()
 
     def _on_start_break(self) -> None:
@@ -999,6 +1001,7 @@ class MainWindow:
 
             self._last_tick_monotonic = time.monotonic()
             self._render(self.timer.snapshot())
+            self._maybe_show_capped_break_notice(self._pending_break)
             if not self._show_break_record_dialog(resume_after_save=False):
                 return
 
@@ -1066,6 +1069,22 @@ class MainWindow:
         else:
             self._render(self.timer.snapshot())
         return True
+
+    def _maybe_show_capped_break_notice(
+        self,
+        completed_break: CompletedBreak | None,
+    ) -> None:
+        if completed_break is None or not completed_break.was_duration_capped:
+            return
+
+        QMessageBox.information(
+            self.window,
+            "休息紀錄提醒",
+            (
+                f"下班啦? 本次休息已超過 {MAX_RECORDED_BREAK_MINUTES} 分鐘，"
+                f"為了避免統計失真，休息紀錄將以 {MAX_RECORDED_BREAK_MINUTES} 分鐘計算。"
+            ),
+        )
 
     def _read_interval_minutes(
         self,
