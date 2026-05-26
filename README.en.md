@@ -12,6 +12,7 @@ The app is built with Python, PyQt5, local JSON storage, and optional Lottie ani
 - Pause, restart countdown, early break, snooze reminder, and end-day actions.
 - Active break reminder dialog when the countdown reaches zero.
 - Break timer with completed break records.
+- A single break record counts for at most 60 minutes to avoid polluted statistics if you forget to return to work.
 - Water intake and optional note entry after a break.
 - Today dashboard for work time, break time, break count, water total, current break, and last break.
 - End-of-day report with health score and rule-based suggestions.
@@ -63,6 +64,7 @@ The health score uses rule-based local logic.
 - There is no daily cap; long workdays scale proportionally.
 - The rest rhythm goal is to avoid any continuous work session longer than 60 minutes.
 - Total break time is a secondary target based on at least 5 minutes of break time per recorded work hour.
+- If a single break exceeds 60 minutes, the app warns that the break record will be counted as 60 minutes; today's statistics and reports use the capped duration.
 - Older saved summaries may still contain a numeric score, but reports apply the current display rule first to avoid misleading scores.
 
 ## Animation Assets
