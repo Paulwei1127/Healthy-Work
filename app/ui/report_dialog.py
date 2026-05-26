@@ -5,6 +5,7 @@ from __future__ import annotations
 try:
     from PyQt5.QtCore import Qt
     from PyQt5.QtWidgets import (
+        QApplication,
         QDialog,
         QFrame,
         QGridLayout,
@@ -23,10 +24,13 @@ except ImportError as exc:  # pragma: no cover - depends on local installation.
 from app.data.models import DailySummary
 
 
-REPORT_DIALOG_WIDTH = 500
-REPORT_DIALOG_HEIGHT = 620
-REPORT_DIALOG_MIN_WIDTH = 380
-REPORT_DIALOG_MIN_HEIGHT = 500
+REPORT_DIALOG_WIDTH = 420
+REPORT_DIALOG_HEIGHT = 520
+REPORT_DIALOG_MIN_WIDTH = 340
+REPORT_DIALOG_MIN_HEIGHT = 400
+REPORT_DIALOG_SCREEN_MARGIN = 24
+REPORT_DIALOG_PARENT_OFFSET_X = -120
+REPORT_DIALOG_PARENT_OFFSET_Y = -80
 
 
 class ReportDialog:
@@ -74,7 +78,7 @@ class ReportDialog:
             QLabel#Score {
                 color: #1f6f5b;
                 font-family: "Segoe UI", "Microsoft JhengHei UI", "Yu Gothic UI";
-                font-size: 42px;
+                font-size: 32px;
                 font-weight: 900;
             }
             QLabel#Section {
@@ -108,8 +112,8 @@ class ReportDialog:
         )
 
         main_layout = QVBoxLayout(dialog)
-        main_layout.setContentsMargins(18, 18, 18, 18)
-        main_layout.setSpacing(12)
+        main_layout.setContentsMargins(14, 14, 14, 14)
+        main_layout.setSpacing(10)
 
         scroll_area = QScrollArea()
         scroll_area.setObjectName("ReportScroll")
@@ -124,7 +128,7 @@ class ReportDialog:
 
         layout = QVBoxLayout(content)
         layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(12)
+        layout.setSpacing(10)
 
         title = QLabel("今日健康工作報告")
         title.setObjectName("Title")
@@ -135,22 +139,24 @@ class ReportDialog:
 
         score_card = _make_card()
         score_layout = QVBoxLayout(score_card)
-        score_layout.setContentsMargins(18, 16, 18, 16)
-        score_layout.setSpacing(8)
+        score_layout.setContentsMargins(14, 12, 14, 12)
+        score_layout.setSpacing(6)
         score_title = QLabel("健康度評分")
         score_title.setObjectName("Section")
         score = QLabel(_format_health_score(self.summary))
         score.setObjectName("Score")
         score.setAlignment(Qt.AlignCenter)
+        score.setWordWrap(True)
+        score.setMinimumHeight(48)
         score_layout.addWidget(score_title)
         score_layout.addWidget(score)
         layout.addWidget(score_card)
 
         metrics_card = _make_card()
         metrics_layout = QGridLayout(metrics_card)
-        metrics_layout.setContentsMargins(16, 16, 16, 16)
-        metrics_layout.setHorizontalSpacing(14)
-        metrics_layout.setVerticalSpacing(12)
+        metrics_layout.setContentsMargins(14, 14, 14, 14)
+        metrics_layout.setHorizontalSpacing(10)
+        metrics_layout.setVerticalSpacing(9)
         metrics = [
             ("工作總時間", _format_minutes(self.summary.work_minutes)),
             ("休息總時間", _format_minutes(self.summary.break_minutes)),
@@ -171,8 +177,8 @@ class ReportDialog:
 
         suggestions_card = _make_card()
         suggestions_layout = QVBoxLayout(suggestions_card)
-        suggestions_layout.setContentsMargins(16, 16, 16, 16)
-        suggestions_layout.setSpacing(9)
+        suggestions_layout.setContentsMargins(14, 14, 14, 14)
+        suggestions_layout.setSpacing(8)
         suggestions_title = QLabel("健康建議")
         suggestions_title.setObjectName("Section")
         suggestions_layout.addWidget(suggestions_title)
@@ -245,9 +251,50 @@ def _add_metric(
 
 def _position_dialog(dialog: QDialog, parent: QWidget) -> None:
     parent_geometry = parent.geometry()
-    x = parent_geometry.x() + max(0, (parent_geometry.width() - REPORT_DIALOG_WIDTH) // 2)
-    y = parent_geometry.y() + max(0, (parent_geometry.height() - REPORT_DIALOG_HEIGHT) // 2)
+    dialog_size = dialog.size()
+    if dialog_size.width() <= 0 or dialog_size.height() <= 0:
+        dialog_size = dialog.sizeHint()
+
+    x = (
+        parent_geometry.center().x()
+        - dialog_size.width() // 2
+        + REPORT_DIALOG_PARENT_OFFSET_X
+    )
+    y = (
+        parent_geometry.center().y()
+        - dialog_size.height() // 2
+        + REPORT_DIALOG_PARENT_OFFSET_Y
+    )
+
+    screen = parent.screen()
+    if screen is None:
+        app = QApplication.instance()
+        screen = app.primaryScreen() if app is not None else None
+
+    if screen is not None:
+        available_geometry = screen.availableGeometry()
+        min_x = available_geometry.left()
+        min_y = available_geometry.top()
+        max_x = (
+            available_geometry.left()
+            + available_geometry.width()
+            - dialog_size.width()
+            - REPORT_DIALOG_SCREEN_MARGIN
+        )
+        max_y = (
+            available_geometry.top()
+            + available_geometry.height()
+            - dialog_size.height()
+            - REPORT_DIALOG_SCREEN_MARGIN
+        )
+        x = _clamp(x, min_x, max(min_x, max_x))
+        y = _clamp(y, min_y, max(min_y, max_y))
+
     dialog.move(x, y)
+
+
+def _clamp(value: int, minimum: int, maximum: int) -> int:
+    return max(minimum, min(value, maximum))
 
 
 def _format_minutes(minutes: int) -> str:

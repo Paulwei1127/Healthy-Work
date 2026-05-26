@@ -5,8 +5,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtWidgets import QDialog
 
+from app.core.statistics import calculate_daily_statistics
+from app.core.timer import MAX_RECORDED_BREAK_MINUTES, TimerState
 from app.data.models import BreakRecord
-from app.core.timer import TimerState
 from app.data.storage import JsonStorage
 import app.ui.animation as animation_module
 import app.ui.main_window as main_window_module
@@ -17,6 +18,12 @@ from app.ui.main_window import (
     MainWindow,
     TIMER_STATE_TO_GIF,
     TIMER_STATE_TO_LOTTIE,
+    WINDOW_HEIGHT,
+    WINDOW_MARGIN_X,
+    WINDOW_MARGIN_Y,
+    WINDOW_MIN_HEIGHT,
+    WINDOW_MIN_WIDTH,
+    WINDOW_WIDTH,
     get_resource_path,
 )
 from app.ui.reminder_dialog import (
@@ -126,6 +133,37 @@ def test_primary_button_has_disabled_stylesheet_rule(tmp_path) -> None:
     window = MainWindow(storage=storage)
 
     assert "QPushButton#PrimaryButton:disabled" in window.window.styleSheet()
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_main_window_uses_compact_default_size(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    assert window.window.size().width() == WINDOW_WIDTH
+    assert window.window.size().height() == WINDOW_HEIGHT
+    assert window.window.minimumSize().width() == WINDOW_MIN_WIDTH
+    assert window.window.minimumSize().height() == WINDOW_MIN_HEIGHT
+    assert WINDOW_MIN_WIDTH <= WINDOW_WIDTH
+    assert WINDOW_MIN_HEIGHT <= WINDOW_HEIGHT
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_main_window_bottom_right_position_stays_inside_screen(tmp_path) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    screen = window.app.primaryScreen().availableGeometry()
+    geometry = window.window.geometry()
+
+    assert geometry.right() <= screen.right()
+    assert geometry.bottom() <= screen.bottom()
+    if screen.width() >= WINDOW_WIDTH + WINDOW_MARGIN_X:
+        assert geometry.right() <= screen.right() - WINDOW_MARGIN_X
+    if screen.height() >= WINDOW_HEIGHT + WINDOW_MARGIN_Y:
+        assert geometry.bottom() <= screen.bottom() - WINDOW_MARGIN_Y
     window.qt_timer.stop()
     window.window.close()
 
@@ -503,6 +541,90 @@ def test_breaking_primary_button_cancel_keeps_pending_break(tmp_path, monkeypatc
     assert window._pending_break is not None
     assert window.start_button.text() == "回到工作"
     assert not storage.list_break_records(window.today)
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_break_record_under_cap_saves_actual_break_minutes(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+
+    class FakeBreakRecordDialog:
+        def __init__(self, parent, completed_break) -> None:
+            self.water_ml = 120
+            self.note = ""
+
+        def exec_(self) -> int:
+            return QDialog.Accepted
+
+    monkeypatch.setattr(
+        main_window_module,
+        "BreakRecordDialog",
+        FakeBreakRecordDialog,
+    )
+
+    window._on_start_work()
+    window._on_start_break()
+    window.timer.tick(30 * 60)
+    window.start_button.click()
+
+    records = storage.list_break_records(window.today)
+    assert len(records) == 1
+    assert records[0].duration_minutes == 30
+    window.qt_timer.stop()
+    window.window.close()
+
+
+def test_break_record_over_cap_saves_max_minutes_and_shows_notice_once(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    storage = JsonStorage(tmp_path / "daily_records.json")
+    window = MainWindow(storage=storage)
+    notices: list[str] = []
+
+    class FakeBreakRecordDialog:
+        def __init__(self, parent, completed_break) -> None:
+            assert completed_break.duration_minutes == MAX_RECORDED_BREAK_MINUTES
+            assert completed_break.duration_seconds == MAX_RECORDED_BREAK_MINUTES * 60
+            self.water_ml = 200
+            self.note = ""
+
+        def exec_(self) -> int:
+            return QDialog.Accepted
+
+    monkeypatch.setattr(
+        main_window_module,
+        "BreakRecordDialog",
+        FakeBreakRecordDialog,
+    )
+    monkeypatch.setattr(
+        main_window_module.QMessageBox,
+        "information",
+        lambda *args, **kwargs: notices.append(str(args[2])),
+    )
+
+    window._on_start_work()
+    window._on_start_break()
+    window.timer.tick((MAX_RECORDED_BREAK_MINUTES + 1) * 60)
+    window.start_button.click()
+
+    records = storage.list_break_records(window.today)
+    statistics = calculate_daily_statistics(
+        date=window.today,
+        work_minutes=window.timer.snapshot().total_work_seconds // 60,
+        break_records=records,
+        work_session_records=window._session_work_records,
+    )
+    assert len(records) == 1
+    assert records[0].duration_minutes == MAX_RECORDED_BREAK_MINUTES
+    assert statistics.break_minutes == MAX_RECORDED_BREAK_MINUTES
+    assert len(notices) == 1
+    assert "下班啦?" in notices[0]
+    assert "60 分鐘" in notices[0]
     window.qt_timer.stop()
     window.window.close()
 

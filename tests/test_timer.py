@@ -1,4 +1,11 @@
-from app.core.timer import TimerState, WorkTimer
+from datetime import datetime, timedelta
+
+from app.core.timer import (
+    MAX_RECORDED_BREAK_MINUTES,
+    MAX_RECORDED_BREAK_SECONDS,
+    TimerState,
+    WorkTimer,
+)
 
 
 def test_elapsed_tick_counts_real_seconds() -> None:
@@ -61,3 +68,36 @@ def test_set_break_interval_is_allowed_in_non_working_states() -> None:
     timer.return_to_work()
     timer.set_break_interval(15)
     assert timer.snapshot().remaining_seconds == 15 * 60
+
+
+def test_completed_break_under_cap_keeps_actual_duration() -> None:
+    break_start = datetime(2026, 5, 26, 10, 0, 0)
+    break_end = break_start + timedelta(minutes=30)
+    now_values = iter([break_start, break_end])
+    timer = WorkTimer(now_provider=lambda: next(now_values))
+
+    timer.start_work()
+    timer.start_break_early()
+    completed_break = timer.return_to_work()
+
+    assert completed_break.duration_minutes == 30
+    assert completed_break.duration_seconds == 30 * 60
+    assert completed_break.actual_duration_minutes == 30
+    assert completed_break.actual_duration_seconds == 30 * 60
+    assert completed_break.was_duration_capped is False
+
+
+def test_completed_break_over_cap_records_maximum_duration() -> None:
+    break_start = datetime(2026, 5, 26, 10, 0, 0)
+    break_end = break_start + timedelta(minutes=MAX_RECORDED_BREAK_MINUTES + 1)
+    now_values = iter([break_start, break_end])
+    timer = WorkTimer(now_provider=lambda: next(now_values))
+
+    timer.start_work()
+    timer.start_break_early()
+    completed_break = timer.return_to_work()
+
+    assert completed_break.duration_minutes == MAX_RECORDED_BREAK_MINUTES
+    assert completed_break.duration_seconds == MAX_RECORDED_BREAK_SECONDS
+    assert completed_break.actual_duration_minutes == MAX_RECORDED_BREAK_MINUTES + 1
+    assert completed_break.was_duration_capped is True

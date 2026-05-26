@@ -54,12 +54,12 @@ from app.ui.reminder_dialog import ReminderAction, ReminderDialog
 from app.ui.report_dialog import ReportDialog
 
 
-WINDOW_WIDTH = 440
-WINDOW_HEIGHT = 660
+WINDOW_WIDTH = 430
+WINDOW_HEIGHT = 560
 WINDOW_MIN_WIDTH = 380
-WINDOW_MIN_HEIGHT = 520
+WINDOW_MIN_HEIGHT = 460
 WINDOW_MARGIN_X = 18
-WINDOW_MARGIN_Y = 64
+WINDOW_MARGIN_Y = 72
 TICK_INTERVAL_MS = 1000
 
 BREAK_DIALOG_WIDTH = 400
@@ -573,8 +573,8 @@ class MainWindow:
 
     def _position_bottom_right(self) -> None:
         screen = self.app.primaryScreen().availableGeometry()
-        x = max(0, screen.right() - WINDOW_WIDTH - WINDOW_MARGIN_X)
-        y = max(0, screen.bottom() - WINDOW_HEIGHT - WINDOW_MARGIN_Y)
+        x = screen.left() + max(0, screen.width() - WINDOW_WIDTH - WINDOW_MARGIN_X)
+        y = screen.top() + max(0, screen.height() - WINDOW_HEIGHT - WINDOW_MARGIN_Y)
         self.window.move(x, y)
 
     def _check_date_rollover(self) -> bool:
