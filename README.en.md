@@ -22,17 +22,20 @@ The app is built with Python, PyQt5, local JSON storage, and optional Lottie ani
 
 ## Download And Use
 
-For normal users, the recommended distribution format is a Windows portable ZIP release.
+Normal users do not need to install Python or know how to use GitHub. Download the Windows portable ZIP release.
 
-1. Open this repository's **Releases** page.
-2. Download the latest Windows `.zip` file from the release assets.
-3. Extract the full ZIP folder before running the app.
-4. Double-click the `.exe` file inside the extracted folder.
-5. Keep the extracted folder contents together. The executable depends on bundled runtime and animation resources.
+1. Open this repository's [Releases page](https://github.com/Paulwei1127/Healthy-Work/releases).
+2. Find the latest release at the top.
+3. In the **Assets** section, download the Windows portable ZIP. The file name usually looks like `HealthyWork-v0.1.1-windows-portable.zip`.
+4. Do not download `Source code (zip)` or `Source code (tar.gz)`. Those are for developers.
+5. After downloading, right-click the ZIP file and extract it first.
+6. Open the extracted folder.
+7. Double-click `HealthyWork.exe` to start the app.
+8. Keep the extracted folder contents together. The executable depends on bundled runtime and animation resources.
 
 The ZIP version is portable and does not need installation. To remove it, close the app and delete the extracted folder.
 
-Windows may show a SmartScreen warning for unsigned builds. That warning can appear even when the app is not malicious; it means the executable has not been code-signed by a trusted publisher.
+Windows may show a SmartScreen warning for unsigned builds. That warning can appear even when the app is not malicious; it means the executable has not been code-signed by a trusted publisher. Confirm that the file came from this repository's Releases page before continuing.
 
 ## Run From Source
 

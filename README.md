@@ -22,17 +22,20 @@ Healthy Work App 是一個 Windows 桌面小工具，用來幫助你維持比較
 
 ## 下載與使用
 
-一般使用者建議下載 Windows 免安裝 ZIP 版本。
+一般使用者不需要安裝 Python，也不需要會使用 GitHub。請下載 Windows 免安裝 ZIP 版本。
 
-1. 打開本專案的 **Releases** 頁面。
-2. 下載最新版本的 Windows `.zip` 檔。
-3. 先完整解壓縮 ZIP，不要直接在壓縮檔裡執行。
-4. 雙擊解壓後資料夾中的 `.exe`。
-5. 請保持整個資料夾內容完整，執行檔需要同資料夾內的 runtime 與動畫資源。
+1. 打開本專案的 [Releases 頁面](https://github.com/Paulwei1127/Healthy-Work/releases)。
+2. 找到最上方的最新版本。
+3. 在 **Assets** 區塊下載 Windows 免安裝 ZIP，檔名通常會像 `HealthyWork-v0.1.1-windows-portable.zip`。
+4. 不要下載 `Source code (zip)` 或 `Source code (tar.gz)`，那是給開發者看的原始碼。
+5. 下載完成後，對 ZIP 檔按右鍵，選擇「全部解壓縮」或「解壓縮到此資料夾」。
+6. 打開解壓縮後的資料夾。
+7. 雙擊 `HealthyWork.exe` 啟動 App。
+8. 請保持整個解壓縮資料夾內容完整，執行檔需要同資料夾內的 runtime 與動畫資源。
 
 ZIP 版本不需要安裝。若要移除，關閉 App 後刪除整個解壓縮資料夾即可。
 
-未簽章的 Windows 執行檔可能會出現 SmartScreen 提醒。這不一定代表程式有問題，只是代表它尚未經過可信任發行者的程式碼簽章。
+未簽章的 Windows 執行檔可能會出現 SmartScreen 提醒。這不一定代表程式有問題，只是代表它尚未經過可信任發行者的程式碼簽章。請確認檔案是從本專案 Releases 頁面下載後，再依照 Windows 畫面提示選擇繼續執行。
 
 ## 從原始碼執行
 
